@@ -130,9 +130,11 @@ static void hint_bar(lv_obj_t *scr, const char *text)
 
 static void tuner_pill_refresh(void)
 {
+    // 控件指针可能尚未建全(整屏重建的中途),为空时只跳过,绝不能碰 NULL。
     for (int i = 0; i < TUNER_STRING_COUNT; i++) {
-        set_selected(s_tun_pills[i], i == s_tuner_string);
+        if (s_tun_pills[i]) set_selected(s_tun_pills[i], i == s_tuner_string);
     }
+    if (!s_tun_target) return;
     const tuner_string_t *st = &TUNER_STRINGS[s_tuner_string];
     lv_label_set_text_fmt(s_tun_target, "%s target %d.%02d Hz",
                           st->full, st->freq_x100 / 100, st->freq_x100 % 100);
@@ -152,7 +154,6 @@ static void build_tuner_page(lv_obj_t *scr)
         lv_obj_set_width(lab, pw - 6);
         lv_obj_set_style_text_align(lab, LV_TEXT_ALIGN_CENTER, 0);
     }
-    tuner_pill_refresh();
 
     s_tun_freq = label_at(scr, "-- Hz", &lv_font_montserrat_32,
                           0xFFFFFF, 0, 92);
@@ -178,6 +179,9 @@ static void build_tuner_page(lv_obj_t *scr)
                             0xCFE6FF, 0, 216);
     lv_obj_set_width(s_tun_status, 240);
     lv_obj_set_style_text_align(s_tun_status, LV_TEXT_ALIGN_CENTER, 0);
+
+    // 全部控件就绪后才刷新高亮与目标行(之前放在这里之前,对 NULL 标签写文本直接崩溃)。
+    tuner_pill_refresh();
 
     hint_bar(scr, HINT_TUNER);
 }

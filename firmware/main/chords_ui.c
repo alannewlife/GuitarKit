@@ -62,11 +62,12 @@ static int s_capo_shape;         // CAPO_SHAPE_KEYS 下标
 static lv_obj_t *s_scr;
 static lv_timer_t *s_tick;
 
-static const char *HINT_HUB    = "UP/DN sel  OK open";
-static const char *HINT_KEY    = "UP/DN sel  OK open  2xOK back";
+static const char *HINT_HUB    = "UP/DN select  OK open";
+static const char *HINT_KEY    = "UP/DN key  OK open  2xOK back";
 static const char *HINT_LIST   = "UP/DN move  OK open  2xOK back";
 static const char *HINT_DETAIL = "UP/DN chord  OK 7th  2xOK back";
 static const char *HINT_TUNER  = "UP/DN string  2xOK back";
+static const char *HINT_CAPO   = "UP/DN set  OK switch  2xOK back";
 
 // ---- 小工具: 像素风矩形/带边框面板 ----
 
@@ -114,11 +115,13 @@ static lv_obj_t *label_at(lv_obj_t *parent, const char *text,
 
 static void hint_bar(lv_obj_t *scr, const char *text)
 {
-    block(scr, 10, 266, 220, 18, UI_INK);
-    lv_obj_t *lab = label_at(scr, text, &lv_font_montserrat_14, 0xFFE9A8, 0, 0);
-    lv_obj_set_width(lab, 220);
+    // 提示文字用 12px 字体(14px 在真机上放不下会换行)。单行居中;
+    // 万一将来某条超宽, 循环滚动兜底, 绝不换行挤出黑条。
+    block(scr, 2, 266, 236, 18, UI_INK);
+    lv_obj_t *lab = label_at(scr, text, &lv_font_montserrat_12, 0xFFE9A8, 0, 268);
+    lv_obj_set_width(lab, 236);
     lv_obj_set_style_text_align(lab, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_y(lab, 268);
+    lv_label_set_long_mode(lab, LV_LABEL_LONG_SCROLL_CIRCULAR);
 }
 
 // ---- 调音页 ----
@@ -336,7 +339,7 @@ static void build_capo_page(lv_obj_t *scr)
     lv_obj_set_width(cap, 240);
     lv_obj_set_style_text_align(cap, LV_TEXT_ALIGN_CENTER, 0);
 
-    hint_bar(scr, "UP/DN set  OK switch  2xOK back");
+    hint_bar(scr, HINT_CAPO);
 }
 
 // ---- 页面构建 ----

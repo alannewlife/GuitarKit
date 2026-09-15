@@ -447,7 +447,7 @@ function render() {
 
   if (s.page === PAGE.HUB) {
     pageTitle.textContent = "Guitar Kit";
-    pageHint.textContent = "UP/DN sel · OK open";
+    pageHint.textContent = "UP/DN select · OK open";
     HUB_ITEMS.forEach((item, i) => {
       const col = i % 2, row = (i / 2) | 0;
       const card = el("row" + (s.hubSel === i ? " sel" : ""), screenEl);
@@ -461,7 +461,7 @@ function render() {
 
   } else if (s.page === PAGE.KEY) {
     pageTitle.textContent = "Chord Book";
-    pageHint.textContent = "UP/DN sel · OK open · 2xOK back";
+    pageHint.textContent = "UP/DN key · OK open · 2xOK back";
     KEYS.forEach((k, i) => {
       const card = el("keycard" + (s.keySel === i ? " sel" : ""), screenEl);
       card.style.top = (64 + i * 100) + "px";

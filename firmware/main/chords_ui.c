@@ -603,9 +603,7 @@ void chords_ui_key(bsp_btn_t btn, bsp_btn_ev_t ev)
     if (ev == BSP_BTN_DOUBLE) {              // 逐层返回
         if (s_page == PAGE_LIST)      s_page = PAGE_KEY;
         else if (s_page == PAGE_DETAIL) s_page = PAGE_LIST;
-        else if (s_page == PAGE_KEY)    s_page = PAGE_HUB;
-        else if (s_page == PAGE_TUNER)  s_page = PAGE_HUB;
-        else if (s_page == PAGE_CAPO)   s_page = PAGE_HUB;
+        else                          s_page = PAGE_HUB; // KEY/TUNER/CAPO/METRONOME 及以后的新工具
         render();
         return;
     }

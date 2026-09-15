@@ -10,4 +10,8 @@ trap 'rm -rf "${test_dir}"' EXIT
     tests/test_chord_model.c main/chord_model.c \
     -o "${test_dir}/test_chord_model"
 "${test_dir}/test_chord_model"
+"${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
+    tests/test_tuner.c main/tuner.c \
+    -o "${test_dir}/test_tuner" -lm
+"${test_dir}/test_tuner"
 echo "Host tests: PASS"

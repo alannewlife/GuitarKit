@@ -1,19 +1,23 @@
 // main/chords_ui.c —— 吉他和弦词典界面: 选调(KEY) -> 级数列表(LIST, I..vii°) -> 和弦详情(DETAIL)。
+// 调音器(TUNER)从 KEY 页长按 OK 进入,再长按或双击 OK 返回。
 // 按键语义:
-//   上/下 短按   KEY 页=切换调; LIST/DETAIL 页=上一个/下一个级数(循环)
-//   确定  短按   KEY/LIST=进入; DETAIL=同一根音上循环拓展变体(三和弦->七和弦->属七...)
-//   确定  双击   LIST/DETAIL=返回上一级
-//   确定  长按   预留(当前无上级界面,忽略)
+//   上/下 短按   KEY 页=切换调; LIST/DETAIL 页=上一个/下一个级数(循环); TUNER 页=选目标弦
+//   确定  短按   KEY/LIST=进入; DETAIL=同一根音上循环拓展变体(三和弦->七和弦->属七...); TUNER=无
+//   确定  双击   LIST/DETAIL/TUNER=返回上一级
+//   确定  长按   KEY=进调音器; TUNER=返回选调页
 // 和弦数据与指法在 chord_model.c; 新增和弦(如 sus4/add9)只需在对应变体表末尾追加。
+// 调音器数据来自 tuner_audio 采音任务,本文件只做展示(10Hz 轮询)。
 #include "chords_ui.h"
 #include "chord_model.h"
+#include "tuner.h"
+#include "tuner_audio.h"
 #include "bsp_button.h"
 #include "ui_pixel.h"
 #include "lvgl.h"
 
 #include <stdio.h>
 
-typedef enum { PAGE_KEY, PAGE_LIST, PAGE_DETAIL } page_t;
+typedef enum { PAGE_KEY, PAGE_LIST, PAGE_DETAIL, PAGE_TUNER } page_t;
 
 static page_t s_page = PAGE_KEY;
 static int s_key_sel;            // KEY 页当前选中的调
@@ -22,11 +26,22 @@ static int s_degree;             // 当前级数
 // 会话内记住每级选中的变体, 回到列表时能看到已拓展的和弦名。
 static int s_variant[CHORD_KEY_COUNT][CHORD_DEGREE_COUNT];
 
-static lv_obj_t *s_scr;
+// 调音页状态: 目标弦 + 自动跟弦(弹哪根亮哪根)。
+static int s_tuner_string;
+static int s_tuner_seq = -1;     // 上次处理的帧序号
+static lv_obj_t *s_tun_freq;     // 大字检测频率
+static lv_obj_t *s_tun_status;   // IN TUNE / TUNE UP / TUNE DOWN
+static lv_obj_t *s_tun_needle;   // 音分指针
+static lv_obj_t *s_tun_target;   // 目标弦频率行
+static lv_obj_t *s_tun_pills[TUNER_STRING_COUNT];
 
-static const char *HINT_KEY    = "UP/DN select  OK open";
+static lv_obj_t *s_scr;
+static lv_timer_t *s_tick;
+
+static const char *HINT_KEY    = "UP/DN sel  OK open  hold:tuner";
 static const char *HINT_LIST   = "UP/DN move  OK open  2xOK back";
 static const char *HINT_DETAIL = "UP/DN chord  OK 7th  2xOK back";
+static const char *HINT_TUNER  = "UP/DN string  2xOK back";
 
 // ---- 小工具: 像素风矩形/带边框面板 ----
 
@@ -79,6 +94,112 @@ static void hint_bar(lv_obj_t *scr, const char *text)
     lv_obj_set_width(lab, 220);
     lv_obj_set_style_text_align(lab, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_y(lab, 268);
+}
+
+// ---- 调音页 ----
+// 弦名药丸 + 大字检测频率 + 音分管(指针 ±50 音分) + 松紧提示。
+// 数据由 tuner_tick 每 100ms 从采音任务取一次。
+
+static void tuner_pill_refresh(void)
+{
+    for (int i = 0; i < TUNER_STRING_COUNT; i++) {
+        set_selected(s_tun_pills[i], i == s_tuner_string);
+    }
+    const tuner_string_t *st = &TUNER_STRINGS[s_tuner_string];
+    lv_label_set_text_fmt(s_tun_target, "%s target %d.%02d Hz",
+                          st->full, st->freq_x100 / 100, st->freq_x100 % 100);
+}
+
+static void build_tuner_page(lv_obj_t *scr)
+{
+    // 弦名药丸一行: 6 个 34px + 5 个 2px 间隔 = 214, 居中。
+    const int pw = 34, ph = 26, gap = 2;
+    int x0 = (240 - (TUNER_STRING_COUNT * pw + (TUNER_STRING_COUNT - 1) * gap)) / 2;
+    for (int i = 0; i < TUNER_STRING_COUNT; i++) {
+        int x = x0 + i * (pw + gap);
+        block(scr, x + 3, 52 + 4, pw, ph, UI_INK);      // 阴影
+        s_tun_pills[i] = plain_panel(scr, x, 52, pw, ph);
+        lv_obj_t *lab = label_at(s_tun_pills[i], TUNER_STRINGS[i].name,
+                                 &lv_font_montserrat_14, UI_INK, 0, 3);
+        lv_obj_set_width(lab, pw - 6);
+        lv_obj_set_style_text_align(lab, LV_TEXT_ALIGN_CENTER, 0);
+    }
+    tuner_pill_refresh();
+
+    s_tun_freq = label_at(scr, "-- Hz", &lv_font_montserrat_32,
+                          0xFFFFFF, 0, 92);
+    lv_obj_set_width(s_tun_freq, 240);
+    lv_obj_set_style_text_align(s_tun_freq, LV_TEXT_ALIGN_CENTER, 0);
+
+    s_tun_target = label_at(scr, "", &lv_font_montserrat_14,
+                            0xCFE6FF, 0, 132);
+    lv_obj_set_width(s_tun_target, 240);
+    lv_obj_set_style_text_align(s_tun_target, LV_TEXT_ALIGN_CENTER, 0);
+
+    // 音分管: 220px 对应 ±50 音分(2px/音分),中央 ±5 音分为绿色合弦区。
+    block(scr, 10, 168, 220, 10, UI_PAPER);
+    block(scr, 110, 168, 20, 10, UI_GRASS);             // ±5 音分
+    block(scr, 118, 164, 4, 18, UI_INK);                // 中心标记
+    block(scr, 68, 170, 2, 6, UI_INK);                  // -25
+    block(scr, 170, 170, 2, 6, UI_INK);                 // +25
+    s_tun_needle = block(scr, 117, 156, 6, 34, UI_YELLOW);
+    lv_obj_set_style_border_width(s_tun_needle, 2, 0);
+    lv_obj_set_style_border_color(s_tun_needle, lv_color_hex(UI_INK), 0);
+
+    s_tun_status = label_at(scr, "listening...", &lv_font_montserrat_20,
+                            0xCFE6FF, 0, 216);
+    lv_obj_set_width(s_tun_status, 240);
+    lv_obj_set_style_text_align(s_tun_status, LV_TEXT_ALIGN_CENTER, 0);
+
+    hint_bar(scr, HINT_TUNER);
+}
+
+// 100ms 定时: 取最新检测,刷新频率/指针/状态。指针 -50..+50 音分线性映射。
+static void tuner_tick(lv_timer_t *t)
+{
+    (void)t;
+    if (s_page != PAGE_TUNER || !s_scr || !s_tun_freq) return;
+
+    tuner_result_t r = tuner_audio_result();
+    if (r.seq == s_tuner_seq) return;                   // 没有新帧
+    s_tuner_seq = r.seq;
+
+    if (r.freq_x100 <= 0 || r.nearest < 0) {
+        lv_label_set_text(s_tun_freq, "-- Hz");
+        lv_obj_set_x(s_tun_needle, 117);
+        lv_label_set_text(s_tun_status, "play a string...");
+        lv_obj_set_style_text_color(s_tun_status,
+                                    lv_color_hex(0xCFE6FF), 0);
+        return;
+    }
+
+    // 自动跟弦: 弹哪根亮哪根(六弦通用调音器的常见行为)。
+    if (r.nearest != s_tuner_string) {
+        s_tuner_string = r.nearest;
+        tuner_pill_refresh();
+    }
+
+    lv_label_set_text_fmt(s_tun_freq, "%d.%02d Hz",
+                          r.freq_x100 / 100, r.freq_x100 % 100);
+
+    int c = r.cents;
+    if (c < -50) c = -50;
+    if (c > 50) c = 50;
+    lv_obj_set_x(s_tun_needle, 120 + c * 2 - 3);
+
+    if (c > -6 && c < 6) {
+        lv_label_set_text(s_tun_status, "IN TUNE");
+        lv_obj_set_style_text_color(s_tun_status,
+                                    lv_color_hex(0x8FE84C), 0);
+    } else if (c < 0) {
+        lv_label_set_text(s_tun_status, "TUNE UP (flat)");
+        lv_obj_set_style_text_color(s_tun_status,
+                                    lv_color_hex(UI_YELLOW), 0);
+    } else {
+        lv_label_set_text(s_tun_status, "TUNE DOWN (sharp)");
+        lv_obj_set_style_text_color(s_tun_status,
+                                    lv_color_hex(UI_ORANGE), 0);
+    }
 }
 
 // ---- 和弦指法图 ----
@@ -224,10 +345,15 @@ static void render(void)
         lv_obj_delete(s_scr);
         s_scr = NULL;
     }
+    // 旧屏上的调音控件指针随屏销毁,先清空,防止 tick 访问悬垂指针。
+    for (int i = 0; i < TUNER_STRING_COUNT; i++) s_tun_pills[i] = NULL;
+    s_tun_freq = s_tun_status = s_tun_needle = s_tun_target = NULL;
+    s_tuner_seq = -1;
 
     const char *title;
     if (s_page == PAGE_KEY)         title = "Chord Book";
     else if (s_page == PAGE_LIST)   title = CHORD_KEYS[s_key].name;
+    else if (s_page == PAGE_TUNER)  title = "Tuner";
     else {
         const chord_degree_t *deg = &CHORD_KEYS[s_key].degrees[s_degree];
         title = deg->variants[s_variant[s_key][s_degree]].name;
@@ -236,6 +362,7 @@ static void render(void)
     s_scr = ui_pixel_screen_create(title);
     if (s_page == PAGE_KEY)         build_key_page(s_scr);
     else if (s_page == PAGE_LIST)   build_list_page(s_scr);
+    else if (s_page == PAGE_TUNER)  build_tuner_page(s_scr);
     else                            build_detail_page(s_scr);
     lv_screen_load(s_scr);
 }
@@ -246,7 +373,10 @@ void chords_ui_enter(void)
 {
     s_page = PAGE_KEY;
     s_key_sel = 0;
+    s_tuner_string = 0;
     render();
+    // 调音数据轮询(10Hz)。常驻整个应用生命周期,回调里自行判断当前页面。
+    if (!s_tick) s_tick = lv_timer_create(tuner_tick, 100, NULL);
 }
 
 void chords_ui_key(bsp_btn_t btn, bsp_btn_ev_t ev)
@@ -256,22 +386,33 @@ void chords_ui_key(bsp_btn_t btn, bsp_btn_ev_t ev)
         int dir = (btn == BSP_BTN_DOWN) ? 1 : -1;
         if (s_page == PAGE_KEY) {
             s_key_sel = (s_key_sel + dir + CHORD_KEY_COUNT) % CHORD_KEY_COUNT;
+        } else if (s_page == PAGE_TUNER) {
+            s_tuner_string =
+                (s_tuner_string + dir + TUNER_STRING_COUNT) % TUNER_STRING_COUNT;
+            tuner_pill_refresh();            // 只刷高亮,不整屏重建
+            return;
         } else {
             s_degree = (s_degree + dir + CHORD_DEGREE_COUNT) % CHORD_DEGREE_COUNT;
         }
         render();
         return;
     }
-    if (btn != BSP_BTN_OK || (ev != BSP_BTN_CLICK && ev != BSP_BTN_DOUBLE)) {
-        return;
-    }
+    if (btn != BSP_BTN_OK) return;
 
-    if (ev == BSP_BTN_DOUBLE) {              // 返回上一级
-        if (s_page == PAGE_LIST)      s_page = PAGE_KEY;
-        else if (s_page == PAGE_DETAIL) s_page = PAGE_LIST;
+    if (ev == BSP_BTN_LONG) {                // 长按: 选调页 <-> 调音器
+        if (s_page == PAGE_KEY)      s_page = PAGE_TUNER;
+        else if (s_page == PAGE_TUNER) s_page = PAGE_KEY;
         render();
         return;
     }
+    if (ev == BSP_BTN_DOUBLE) {              // 返回上一级
+        if (s_page == PAGE_LIST)      s_page = PAGE_KEY;
+        else if (s_page == PAGE_DETAIL) s_page = PAGE_LIST;
+        else if (s_page == PAGE_TUNER)  s_page = PAGE_KEY;
+        render();
+        return;
+    }
+    if (ev != BSP_BTN_CLICK) return;
 
     if (s_page == PAGE_KEY) {                // 进入选中的调
         s_key = s_key_sel;
@@ -279,11 +420,11 @@ void chords_ui_key(bsp_btn_t btn, bsp_btn_ev_t ev)
         s_page = PAGE_LIST;
     } else if (s_page == PAGE_LIST) {        // 查看指法
         s_page = PAGE_DETAIL;
-    } else {                                 // 拓展: 同根音循环切换变体
+    } else if (s_page == PAGE_DETAIL) {      // 拓展: 同根音循环切换变体
         int n = chord_variant_count(s_key, s_degree);
         if (n > 0) {
             s_variant[s_key][s_degree] = (s_variant[s_key][s_degree] + 1) % n;
         }
     }
-    render();
+    render();                                // TUNER 页 OK 单击无动作,render 无害
 }

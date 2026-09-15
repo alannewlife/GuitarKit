@@ -8,6 +8,7 @@
 #include "bsp_button.h"
 #include "bsp_pins.h"      // 错误日志里要打印 BSP_LCD_* 引脚号
 #include "chords_ui.h"
+#include "tuner_audio.h"   // 调音采音任务
 #include "lvgl.h"
 #include "esp_log.h"
 
@@ -41,6 +42,9 @@ void app_main(void) {
         chords_ui_enter();
         bsp_lvgl_unlock();
     }
+
+    // 调音采音任务: 初始化 ES8311(内部含共享 I2C)并持续测频, 供调音页轮询。
+    tuner_audio_start();
 
     ESP_LOGI(TAG, "和弦词典就绪");
 }

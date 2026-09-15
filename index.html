@@ -193,7 +193,7 @@
         </div>
       </div>
       <div style="margin-top:14px; font-size:12px; color:#7e93a6; line-height:1.9; width:296px;">
-        键盘也可操作：<kbd>↑</kbd> <kbd>↓</kbd> = UP / DOWN，<kbd>Enter</kbd> = OK（快速按两次 = 双击返回）
+        键盘也可操作：<kbd>↑</kbd> <kbd>↓</kbd> = UP / DOWN，<kbd>Enter</kbd> = OK（快速按两次 = 双击返回），<kbd>L</kbd> = 长按 OK（进/出调音器）
       </div>
     </div>
 
@@ -227,7 +227,8 @@
 
   <footer>
     数据与固件一致：每个和弦存 6 弦品位 + 指法 + 构成音；vii° 级的 F#dim 给的是常用转位按法（无低音根音）。<br>
-    本页面为纯前端示意，双击 OK 的判定与真机 BSP 按键组件一致（约 300ms 内两击）。
+    本页面为纯前端示意。调音页在真机上由麦克风拾音（16kHz 采样 + 归一化自相关测频 + 抛物线插值），
+    此处用模拟信号演示；双击 OK 的判定与真机 BSP 按键组件一致（约 300ms 内两击），长按判定约 600ms（真机 1.5s）。
   </footer>
 </div>
 
@@ -292,13 +293,14 @@ const KEYS = [
   ]},
 ];
 
-/* ============ 应用状态（与固件 demo_chords.c 相同的状态机） ============ */
-const PAGE = { KEY: 0, LIST: 1, DETAIL: 2 };
+/* ============ 应用状态（与固件 chords_ui.c 相同的状态机） ============ */
+const PAGE = { KEY: 0, LIST: 1, DETAIL: 2, TUNER: 3 };
 let s = {
   page: PAGE.KEY,
   keySel: 0,                 // 调选择页选中项
   key: 0,                    // 当前调
   degree: 0,                 // 当前级数
+  tunerString: 0,            // 调音页目标弦
   variant: [[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]],  // 每级当前变体(会话内记住)
 };
 
@@ -433,7 +435,7 @@ function render() {
 
   if (s.page === PAGE.KEY) {
     pageTitle.textContent = "Chord Book";
-    pageHint.textContent = "UP/DN select · OK open";
+    pageHint.textContent = "UP/DN sel · OK open · hold:tuner";
     KEYS.forEach((k, i) => {
       const card = el("keycard" + (s.keySel === i ? " sel" : ""), screenEl);
       card.style.top = (64 + i * 100) + "px";
@@ -452,6 +454,54 @@ function render() {
       row.innerHTML = `<span class="roman">${d.roman}</span><span class="cname">${v.name}</span><span class="q">${v.q}</span>`;
       row.onclick = () => { s.degree = i; render(); };
     });
+
+  } else if (s.page === PAGE.TUNER) {
+    pageTitle.textContent = "Tuner";
+    pageHint.textContent = "UP/DN string · 2xOK back";
+    // 弦名药丸
+    const pw = 34, ph = 26, gap = 2;
+    const x0 = (240 - (6 * pw + 5 * gap)) / 2;
+    TUNER.els.pills = [];
+    TUNER.STRINGS.forEach((st, i) => {
+      const pill = el("row" + (s.tunerString === i ? " sel" : ""), screenEl);
+      pill.style.left = (x0 + i * (pw + gap)) + "px";
+      pill.style.top = "52px"; pill.style.width = pw + "px"; pill.style.height = ph + "px";
+      pill.innerHTML = `<span class="cname" style="margin:0 auto">${st.n}</span>`;
+      pill.onclick = () => { s.tunerString = i; render(); };
+      TUNER.els.pills.push(pill);
+    });
+    // 大字频率 / 目标行
+    TUNER.els.freq = el("", screenEl);
+    Object.assign(TUNER.els.freq.style, {
+      position:"absolute", left:"0", top:"92px", width:"240px", textAlign:"center",
+      color:"#fff", fontSize:"30px", fontWeight:"900", textShadow:"2px 2px 0 var(--ink)"
+    });
+    TUNER.els.freq.textContent = "-- Hz";
+    TUNER.els.target = el("", screenEl);
+    Object.assign(TUNER.els.target.style, {
+      position:"absolute", left:"0", top:"132px", width:"240px", textAlign:"center",
+      color:"#cfe6ff", fontSize:"12px", fontWeight:"700"
+    });
+    // 音分管: ±50 音分线性映射, 中央 ±5 音分绿色合弦区
+    const mk = (x, y, w, h, c) => {
+      const b = el("", screenEl);
+      Object.assign(b.style, { position:"absolute", left:x+"px", top:y+"px", width:w+"px", height:h+"px", background:c });
+      return b;
+    };
+    mk(10, 168, 220, 10, "var(--paper)");
+    mk(110, 168, 20, 10, "var(--grass)");
+    mk(118, 164, 4, 18, "var(--ink)");
+    mk(68, 170, 2, 6, "var(--ink)");
+    mk(170, 170, 2, 6, "var(--ink)");
+    TUNER.els.needle = mk(117, 156, 6, 34, "var(--yellow)");
+    TUNER.els.needle.style.border = "2px solid var(--ink)";
+    TUNER.els.status = el("", screenEl);
+    Object.assign(TUNER.els.status.style, {
+      position:"absolute", left:"0", top:"216px", width:"240px", textAlign:"center",
+      color:"#cfe6ff", fontSize:"16px", fontWeight:"900"
+    });
+    TUNER.els.status.textContent = "listening...";
+    refreshTunerTarget();
 
   } else {
     const K = KEYS[s.key], D = K.degrees[s.degree];
@@ -495,13 +545,20 @@ function renderInfoPanel() {
     const K2 = KEYS[s.keySel];
     document.getElementById("iChord").textContent = K2.en + "（" + K2.cn + "）";
     document.getElementById("iCrumb").innerHTML = "调选择页 · <kbd>↑</kbd><kbd>↓</kbd> 选择调，<kbd>Enter</kbd>(OK) 进入";
-    setInfo("调内 7 个级数", "每级 2~3 个变体：三和弦 + 七和弦", "—", "—");
+    setInfo("调内 7 个级数", "每级 2~3 个变体：三和弦 + 七和弦", "长按 OK 进入调音器", "—");
+    return;
+  }
+  if (s.page === PAGE.TUNER) {
+    const st = TUNER.STRINGS[s.tunerString];
+    document.getElementById("iChord").textContent = "Tuner · " + st.full;
+    document.getElementById("iCrumb").innerHTML = "调音页 · 真机通过麦克风拾音（16kHz 采样 + 自相关测频），此页用模拟信号演示";
+    setInfo("标准调弦 E A D G B E", "目标 " + st.hz.toFixed(2) + " Hz",
+      "±5 音分内显示 IN TUNE", "UP/DN 换弦，双击/长按 OK 返回");
     return;
   }
   const deg = K.degrees[s.degree];
   const ch = deg.v[s.variant[s.key][s.degree]];
-  document.getElementById("iChord").textContent = ch.name;
-  document.getElementById("iCrumb").innerHTML =
+  document.getElementById("iChord").textContent = ch.name;  document.getElementById("iCrumb").innerHTML =
     `<b>${K.cn}</b> · 第 <b>${["一","二","三","四","五","六","七"][s.degree]}</b> 级（${deg.roman} ${deg.fnCn}） · 变体 ${s.variant[s.key][s.degree] + 1}/${deg.v.length}`;
   setInfo(ch.qcn + "（" + ch.q + "）", ch.notes, ch.hint || "常规开放按法", deg.fnCn + "和弦（" + deg.fn + "）");
 }
@@ -512,11 +569,74 @@ function setInfo(q, n, h, f) {
   document.getElementById("iFn").textContent = f;
 }
 
+/* ============ 调音器（真机为麦克风 16kHz 采样 + 自相关测频; 示意页用模拟信号） ============ */
+const TUNER = {
+  STRINGS: [
+    { n: "E", full: "E2", hz: 82.41  },
+    { n: "A", full: "A2", hz: 110.00 },
+    { n: "D", full: "D3", hz: 146.83 },
+    { n: "G", full: "G3", hz: 196.00 },
+    { n: "B", full: "B3", hz: 246.94 },
+    { n: "e", full: "E4", hz: 329.63 },
+  ],
+  els: {},
+  sim: { cents: 0, active: false },
+};
+
+function tunerCents(targetHz, hz) {
+  return Math.round(1200 * Math.log2(hz / targetHz));
+}
+function refreshTunerTarget() {
+  const st = TUNER.STRINGS[s.tunerString];
+  if (TUNER.els.target) TUNER.els.target.textContent = st.full + " target " + st.hz.toFixed(2) + " Hz";
+}
+
+/* 每 400ms 模拟一次拨弦检测: 随机换弦 + 音分随机游走, 演示指针与状态变化。 */
+setInterval(() => {
+  if (s.page !== PAGE.TUNER) { TUNER.sim.active = false; return; }
+  const sim = TUNER.sim;
+  if (!sim.active) { sim.active = true; sim.cents = (Math.random() * 80 - 40) | 0; }
+  if (Math.random() < 0.22) s.tunerString = (Math.random() * 6) | 0;
+  sim.cents += (Math.random() - 0.5) * 16;
+  if (Math.random() < 0.12) sim.cents = (Math.random() * 10 - 5) | 0;   // 偶尔接近合弦
+  if (sim.cents < -48) sim.cents = -48;
+  if (sim.cents > 48) sim.cents = 48;
+
+  refreshTunerTarget();
+  TUNER.els.pills.forEach((p, i) =>
+    p.className = "row" + (s.tunerString === i ? " sel" : ""));
+
+  const st = TUNER.STRINGS[s.tunerString];
+  const hz = st.hz * Math.pow(2, sim.cents / 1200);
+  TUNER.els.freq.textContent = hz.toFixed(1) + " Hz";
+  TUNER.els.needle.style.left = (120 + sim.cents * 2 - 3) + "px";
+  if (sim.cents > -6 && sim.cents < 6) {
+    TUNER.els.status.textContent = "IN TUNE";
+    TUNER.els.status.style.color = "#8FE84C";
+  } else if (sim.cents < 0) {
+    TUNER.els.status.textContent = "TUNE UP (flat)";
+    TUNER.els.status.style.color = "var(--yellow)";
+  } else {
+    TUNER.els.status.textContent = "TUNE DOWN (sharp)";
+    TUNER.els.status.style.color = "var(--orange)";
+  }
+}, 400);
+
 /* ============ 按键事件（与固件一致的语义） ============ */
 function onUpDown(dir) { /* dir: -1 UP, +1 DOWN */
   if (s.page === PAGE.KEY) s.keySel = (s.keySel + dir + 2) % 2;
-  else if (s.page === PAGE.LIST) s.degree = (s.degree + dir + 7) % 7;
+  else if (s.page === PAGE.TUNER) {
+    s.tunerString = (s.tunerString + dir + 6) % 6;
+    render();
+    return;
+  }
   else s.degree = (s.degree + dir + 7) % 7;
+  render();
+}
+function onOkLong() {                 /* 长按: 选调页 <-> 调音器 */
+  if (s.page === PAGE.KEY) s.page = PAGE.TUNER;
+  else if (s.page === PAGE.TUNER) s.page = PAGE.KEY;
+  else return;
   render();
 }
 let okTimer = null;
@@ -527,6 +647,7 @@ function onOkClick() { /* 300ms 内二次点击视为双击（与 BSP 一致） 
 function onOkSingle() {
   if (s.page === PAGE.KEY) { s.key = s.keySel; s.degree = 0; s.page = PAGE.LIST; }
   else if (s.page === PAGE.LIST) { s.page = PAGE.DETAIL; }
+  else if (s.page === PAGE.TUNER) { return; }   /* TUNER 页 OK 无动作 */
   else { /* 拓展：循环该级数的变体 */
     const n = KEYS[s.key].degrees[s.degree].v.length;
     s.variant[s.key][s.degree] = (s.variant[s.key][s.degree] + 1) % n;
@@ -536,6 +657,7 @@ function onOkSingle() {
 function onOkDouble() {
   if (s.page === PAGE.LIST) s.page = PAGE.KEY;
   else if (s.page === PAGE.DETAIL) s.page = PAGE.LIST;
+  else if (s.page === PAGE.TUNER) s.page = PAGE.KEY;
   render();
 }
 
@@ -550,11 +672,32 @@ function bindBtn(id, fn) {
 }
 bindBtn("btnUP",   () => onUpDown(-1));
 bindBtn("btnDOWN", () => onUpDown(1));
-bindBtn("btnOK",   () => onOkClick());
+
+/* OK 键: 按住 600ms 触发长按; 短按走单击/双击判定(与 BSP 语义一致) */
+const btnOK = document.getElementById("btnOK");
+let okHoldTimer = null, okLongFired = false;
+btnOK.addEventListener("mousedown", () => {
+  btnOK.classList.add("press");
+  okLongFired = false;
+  okHoldTimer = setTimeout(() => { okLongFired = true; onOkLong(); }, 600);
+});
+const okRelease = () => {
+  btnOK.classList.remove("press");
+  clearTimeout(okHoldTimer);
+  if (okLongFired) { setTimeout(() => { okLongFired = false; }, 400); return; }
+  onOkClick();
+};
+btnOK.addEventListener("mouseup", okRelease);
+btnOK.addEventListener("mouseleave", () => {
+  btnOK.classList.remove("press");
+  clearTimeout(okHoldTimer);
+});
+
 document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowUp")   { e.preventDefault(); onUpDown(-1); }
   if (e.key === "ArrowDown") { e.preventDefault(); onUpDown(1); }
   if (e.key === "Enter")     { e.preventDefault(); onOkClick(); }
+  if (e.key === "l" || e.key === "L") { onOkLong(); }   /* 长按 OK 的键盘等价 */
 });
 
 /* ============ 和弦总表 ============ */

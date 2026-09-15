@@ -82,7 +82,7 @@ static uint32_t s_idle_ms;
 
 static void metronome_dots_refresh(int beat, int playing);
 
-static const char *HINT_HUB    = "UP/DN select  OK open";
+static const char *HINT_HUB    = "UP/DN sel  OK open  hold:off";
 static const char *HINT_KEY    = "UP/DN key  OK open  2xOK back";
 static const char *HINT_LIST   = "UP/DN move  OK open  2xOK back";
 static const char *HINT_DETAIL = "UP/DN chord  OK 7th  2xOK back";
@@ -621,8 +621,15 @@ void chords_ui_key(bsp_btn_t btn, bsp_btn_ev_t ev)
     }
     if (btn != BSP_BTN_OK) return;
 
-    if (ev == BSP_BTN_LONG) {                // 长按: 任何工具页一步回工具箱
-        if (s_page != PAGE_HUB) { s_page = PAGE_HUB; render(); }
+    if (ev == BSP_BTN_LONG) {                // 长按: 工具页回工具箱; 工具箱页立即息屏
+        if (s_page != PAGE_HUB) {
+            s_page = PAGE_HUB;
+            render();
+        } else {
+            s_idle_ms = 0;
+            s_backlight_on = 0;
+            bsp_display_backlight(0);        // 硬件无电源键, 用工具箱长按 OK 代替
+        }
         return;
     }
     if (ev == BSP_BTN_DOUBLE) {              // 逐层返回

@@ -294,7 +294,7 @@ const KEYS = [
 ];
 
 /* ============ 应用状态（与固件 chords_ui.c 相同的状态机） ============ */
-const PAGE = { HUB: 0, KEY: 1, LIST: 2, DETAIL: 3, TUNER: 4, CAPO: 5 };
+const PAGE = { HUB: 0, KEY: 1, LIST: 2, DETAIL: 3, TUNER: 4, CAPO: 5, METRO: 6 };
 let s = {
   page: PAGE.HUB,
   hubSel: 0,                 // 工具箱选中项
@@ -305,6 +305,8 @@ let s = {
   capoSel: 0,                // 变调夹: 0=夹几品, 1=指法调
   capoFret: 2,               // 变调夹品数(0=不夹)
   capoShape: 0,              // 指法调下标
+  metBpm: 100,               // 节拍器速度
+  metPlaying: false,         // 节拍器播放中
   variant: [[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]],  // 每级当前变体(会话内记住)
 };
 const KEY_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
@@ -314,6 +316,7 @@ const HUB_ITEMS = [
   { name: "Chords", sub: "40 chords",  page: PAGE.KEY   },
   { name: "Tuner",  sub: "mic pitch",  page: PAGE.TUNER },
   { name: "Capo",   sub: "key lookup", page: PAGE.CAPO  },
+  { name: "Metronome", sub: "4/4 BPM", page: PAGE.METRO },
 ];
 
 /* ============ 渲染 ============ */
@@ -553,6 +556,32 @@ function render() {
       textAlign:"center", color:"#cfe6ff", fontSize:"12px", fontWeight:"700" });
     cap.textContent = "sounding key";
 
+  } else if (s.page === PAGE.METRO) {
+    pageTitle.textContent = "Metronome";
+    pageHint.textContent = "UP/DN +-5 · OK play · 2xOK back";
+    const res = el("", screenEl);
+    Object.assign(res.style, { position:"absolute", left:"0", top:"74px", width:"240px",
+      textAlign:"center", color:"#fff", fontSize:"32px", fontWeight:"900", textShadow:"2px 2px 0 var(--ink)" });
+    res.textContent = String(s.metBpm);
+    const cap = el("", screenEl);
+    Object.assign(cap.style, { position:"absolute", left:"0", top:"112px", width:"240px",
+      textAlign:"center", color:"#cfe6ff", fontSize:"12px", fontWeight:"700" });
+    cap.textContent = "BPM  4/4";
+    METRO.els.dots = [];
+    const d = 22, gap = 18, x0 = (240 - (4 * d + 3 * gap)) / 2;
+    for (let i = 0; i < 4; i++) {
+      const dot = el("", screenEl);
+      Object.assign(dot.style, { position:"absolute", left:(x0 + i * (d + gap)) + "px", top:"152px",
+        width:d + "px", height:d + "px", borderRadius:"50%",
+        background: i === 0 ? "var(--yellow)" : "var(--paper)", border:"2px solid var(--ink)" });
+      METRO.els.dots.push(dot);
+    }
+    METRO.els.status = el("", screenEl);
+    Object.assign(METRO.els.status.style, { position:"absolute", left:"0", top:"206px", width:"240px",
+      textAlign:"center", color:"#cfe6ff", fontSize:"16px", fontWeight:"900" });
+    METRO.els.status.textContent = s.metPlaying ? "playing" : "stopped";
+    metSchedule();          // 若在播放中翻页回来, 续上拍点动画
+
   } else {
     const K = KEYS[s.key], D = K.degrees[s.degree];
     const ch = D.v[s.variant[s.key][s.degree]];
@@ -595,7 +624,7 @@ function renderInfoPanel() {
     const item = HUB_ITEMS[s.hubSel];
     document.getElementById("iChord").textContent = item.name;
     document.getElementById("iCrumb").innerHTML = "工具箱首页 · <kbd>↑</kbd><kbd>↓</kbd> 选工具，<kbd>Enter</kbd>(OK) 进入";
-    setInfo("3 件工具", "和弦词典 · 调音器 · 变调夹速查", "以后加节拍器就再添一张卡片", "—");
+    setInfo("4 件工具", "和弦词典 · 调音器 · 变调夹速查 · 节拍器", "—", "—");
     return;
   }
   if (s.page === PAGE.KEY) {
@@ -603,6 +632,13 @@ function renderInfoPanel() {
     document.getElementById("iChord").textContent = K2.en + "（" + K2.cn + "）";
     document.getElementById("iCrumb").innerHTML = "调选择页 · <kbd>↑</kbd><kbd>↓</kbd> 选择调，<kbd>Enter</kbd>(OK) 进入";
     setInfo("调内 7 个级数", "每级 2~3 个变体：三和弦 + 七和弦", "双击 OK 回工具箱", "—");
+    return;
+  }
+  if (s.page === PAGE.METRO) {
+    document.getElementById("iChord").textContent = "Metronome · " + s.metBpm + " BPM";
+    document.getElementById("iCrumb").innerHTML = "节拍器 · 4/4 拍，真机由扬声器合成咔嗒声（小节头重音），浏览器里也能听到";
+    setInfo("速度 " + s.metBpm + " BPM", "范围 40–240，UP/DN 每次 ±5",
+      s.metPlaying ? "播放中，OK 停止" : "已停止，OK 开始", "—");
     return;
   }
   if (s.page === PAGE.CAPO) {
@@ -689,9 +725,47 @@ setInterval(() => {
   }
 }, 400);
 
+/* ============ 节拍器（真机由 ES8311 合成咔嗒声; 浏览器用 WebAudio 演示） ============ */
+const METRO = { els: {}, timer: null, beat: -1 };
+let audioCtx = null;
+function metClick(accent) {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = accent ? 1300 : 900;
+    g.gain.setValueAtTime(accent ? 0.5 : 0.3, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + 0.06);
+  } catch (e) { /* 无声环境(自动播放策略)下只做视觉拍点 */ }
+}
+function metDotsRefresh() {
+  if (!METRO.els.dots) return;
+  METRO.els.dots.forEach((dot, i) => {
+    dot.style.background = (s.metPlaying && i === METRO.beat) ? "var(--yellow)" : (i === 0 ? "var(--yellow)" : "var(--paper)");
+    dot.style.borderWidth = (s.metPlaying && i === METRO.beat) ? "3px" : "2px";
+  });
+  if (METRO.els.status) {
+    METRO.els.status.textContent = s.metPlaying ? "playing" : "stopped";
+    METRO.els.status.style.color = s.metPlaying ? "#8FE84C" : "#cfe6ff";
+  }
+}
+function metSchedule() {
+  if (METRO.timer) { clearTimeout(METRO.timer); METRO.timer = null; }
+  if (s.page !== PAGE.METRO || !s.metPlaying) { metDotsRefresh(); return; }
+  METRO.beat = (METRO.beat + 1) % 4;
+  metClick(METRO.beat === 0);
+  metDotsRefresh();
+  METRO.timer = setTimeout(metSchedule, 60000 / s.metBpm);
+}
+
 /* ============ 按键事件（与固件一致的语义） ============ */
 function onUpDown(dir) { /* dir: -1 UP, +1 DOWN */
   if (s.page === PAGE.HUB) s.hubSel = (s.hubSel + dir + HUB_ITEMS.length) % HUB_ITEMS.length;
+  else if (s.page === PAGE.METRO) {
+    s.metBpm = Math.max(40, Math.min(240, s.metBpm + dir * 5));
+    render(); return;
+  }
   else if (s.page === PAGE.KEY) s.keySel = (s.keySel + dir + 2) % 2;
   else if (s.page === PAGE.TUNER) {
     s.tunerString = (s.tunerString + dir + 6) % 6;
@@ -706,7 +780,10 @@ function onUpDown(dir) { /* dir: -1 UP, +1 DOWN */
   render();
 }
 function onOkLong() {                 /* 长按: 任何工具页回工具箱 */
-  if (s.page !== PAGE.HUB) { s.page = PAGE.HUB; render(); }
+  if (s.page !== PAGE.HUB) {
+    if (s.page === PAGE.METRO) { s.metPlaying = false; }
+    s.page = PAGE.HUB; render();
+  }
 }
 let okTimer = null;
 function onOkClick() { /* 300ms 内二次点击视为双击（与 BSP 一致） */
@@ -719,6 +796,11 @@ function onOkSingle() {
   else if (s.page === PAGE.LIST) { s.page = PAGE.DETAIL; }
   else if (s.page === PAGE.TUNER) { return; }   /* TUNER 页 OK 无动作 */
   else if (s.page === PAGE.CAPO) { s.capoSel = 1 - s.capoSel; }
+  else if (s.page === PAGE.METRO) {
+    s.metPlaying = !s.metPlaying;
+    if (s.metPlaying) { METRO.beat = -1; metSchedule(); }
+    else metSchedule();
+  }
   else { /* 拓展：循环该级数的变体 */
     const n = KEYS[s.key].degrees[s.degree].v.length;
     s.variant[s.key][s.degree] = (s.variant[s.key][s.degree] + 1) % n;
@@ -731,6 +813,7 @@ function onOkDouble() {
   else if (s.page === PAGE.KEY) s.page = PAGE.HUB;
   else if (s.page === PAGE.TUNER) s.page = PAGE.HUB;
   else if (s.page === PAGE.CAPO) s.page = PAGE.HUB;
+  else if (s.page === PAGE.METRO) { s.metPlaying = false; s.page = PAGE.HUB; }
   render();
 }
 

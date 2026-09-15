@@ -9,6 +9,8 @@
 #include "chords_ui.h"
 #include "chord_model.h"
 #include "capo_model.h"
+#include "metronome.h"
+#include "metronome_audio.h"
 #include "tuner.h"
 #include "tuner_audio.h"
 #include "bsp_button.h"
@@ -18,7 +20,8 @@
 #include <stdio.h>
 
 typedef enum {
-    PAGE_HUB, PAGE_KEY, PAGE_LIST, PAGE_DETAIL, PAGE_TUNER, PAGE_CAPO
+    PAGE_HUB, PAGE_KEY, PAGE_LIST, PAGE_DETAIL, PAGE_TUNER, PAGE_CAPO,
+    PAGE_METRONOME
 } page_t;
 
 // 工具箱入口表: 新工具 = 加一行(名字/副标题/进入哪个页面)。网格两列,
@@ -33,7 +36,7 @@ static const hub_item_t HUB_ITEMS[] = {
     { "Chords", "40 chords",  PAGE_KEY   },
     { "Tuner",  "mic pitch",  PAGE_TUNER },
     { "Capo",   "key lookup", PAGE_CAPO  },
-    // 下一件: { "Metronome", "40-240 BPM", PAGE_METRONOME },
+    { "Metronome", "4/4 BPM", PAGE_METRONOME },
 };
 #define HUB_ITEM_COUNT (sizeof(HUB_ITEMS) / sizeof(HUB_ITEMS[0]))
 
@@ -59,8 +62,18 @@ static int s_capo_sel;           // 0=夹几品, 1=指法调
 static int s_capo_fret;          // 0..CAPO_MAX_FRET
 static int s_capo_shape;         // CAPO_SHAPE_KEYS 下标
 
+// 节拍器状态: 速度/播放开关由 UI 持有, 拍点动画数据来自播放任务。
+static int s_met_bpm = 100;
+static int s_met_playing;
+static int s_met_seq = -1;       // 上次动画处理到的拍序号
+static lv_obj_t *s_met_bpm_lab;  // 大字 BPM
+static lv_obj_t *s_met_status;   // playing / stopped
+static lv_obj_t *s_met_dots[METRO_BEATS];
+
 static lv_obj_t *s_scr;
 static lv_timer_t *s_tick;
+
+static void metronome_dots_refresh(int beat, int playing);
 
 static const char *HINT_HUB    = "UP/DN select  OK open";
 static const char *HINT_KEY    = "UP/DN key  OK open  2xOK back";
@@ -68,6 +81,7 @@ static const char *HINT_LIST   = "UP/DN move  OK open  2xOK back";
 static const char *HINT_DETAIL = "UP/DN chord  OK 7th  2xOK back";
 static const char *HINT_TUNER  = "UP/DN string  2xOK back";
 static const char *HINT_CAPO   = "UP/DN set  OK switch  2xOK back";
+static const char *HINT_METRO  = "UP/DN +-5  OK play  2xOK back";
 
 // ---- 小工具: 像素风矩形/带边框面板 ----
 
@@ -190,6 +204,20 @@ static void build_tuner_page(lv_obj_t *scr)
 static void tuner_tick(lv_timer_t *t)
 {
     (void)t;
+    if (s_page == PAGE_METRONOME && s_scr) {
+        metronome_info_t m = metronome_audio_info();
+        if (m.seq != s_met_seq) {
+            s_met_seq = m.seq;
+            s_met_playing = m.playing;
+            metronome_dots_refresh(m.playing ? m.beat : -1, m.playing);
+            if (s_met_status) {
+                lv_label_set_text(s_met_status, m.playing ? "playing" : "stopped");
+                lv_obj_set_style_text_color(s_met_status,
+                    lv_color_hex(m.playing ? 0x8FE84C : 0xCFE6FF), 0);
+            }
+        }
+        return;
+    }
     if (s_page != PAGE_TUNER || !s_scr || !s_tun_freq) return;
 
     tuner_result_t r = tuner_audio_result();
@@ -433,6 +461,54 @@ static void build_detail_page(lv_obj_t *scr)
     hint_bar(scr, HINT_DETAIL);
 }
 
+// ---- 节拍器 ----
+// 大字 BPM + 四个拍点(小节头重音)。播放由 metronome_audio 任务发声,
+// 本页 100ms tick 读任务快照刷新拍点与状态; UP/DN 改速度即时生效。
+
+static void metronome_dots_refresh(int beat, int playing)
+{
+    for (int i = 0; i < METRO_BEATS; i++) {
+        if (!s_met_dots[i]) continue;
+        lv_obj_set_style_bg_color(s_met_dots[i],
+            lv_color_hex(i == beat ? UI_YELLOW : UI_PAPER), 0);
+        lv_obj_set_style_border_width(s_met_dots[i],
+            (i == beat && playing) ? 3 : 2, 0);
+    }
+}
+
+static void build_metronome_page(lv_obj_t *scr)
+{
+    char bpm_text[16];
+    snprintf(bpm_text, sizeof(bpm_text), "%d", s_met_bpm);
+    s_met_bpm_lab = label_at(scr, bpm_text, &lv_font_montserrat_32,
+                             0xFFFFFF, 0, 74);
+    lv_obj_set_width(s_met_bpm_lab, 240);
+    lv_obj_set_style_text_align(s_met_bpm_lab, LV_TEXT_ALIGN_CENTER, 0);
+
+    lv_obj_t *cap = label_at(scr, "BPM  4/4", &lv_font_montserrat_14,
+                             0xCFE6FF, 0, 112);
+    lv_obj_set_width(cap, 240);
+    lv_obj_set_style_text_align(cap, LV_TEXT_ALIGN_CENTER, 0);
+
+    // 四个拍点: 22px 圆, 间距 18, 居中。
+    const int d = 22, gap = 18;
+    int x0 = (240 - (METRO_BEATS * d + (METRO_BEATS - 1) * gap)) / 2;
+    for (int i = 0; i < METRO_BEATS; i++) {
+        s_met_dots[i] = block(scr, x0 + i * (d + gap), 152, d, d,
+                              i == 0 ? UI_YELLOW : UI_PAPER);
+        lv_obj_set_style_radius(s_met_dots[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_border_width(s_met_dots[i], 2, 0);
+        lv_obj_set_style_border_color(s_met_dots[i], lv_color_hex(UI_INK), 0);
+    }
+
+    s_met_status = label_at(scr, s_met_playing ? "playing" : "stopped",
+                            &lv_font_montserrat_20, 0xCFE6FF, 0, 206);
+    lv_obj_set_width(s_met_status, 240);
+    lv_obj_set_style_text_align(s_met_status, LV_TEXT_ALIGN_CENTER, 0);
+
+    hint_bar(scr, HINT_METRO);
+}
+
 // 每次状态变化整屏重建。必须先删旧屏再建新屏: LVGL 内存池有限,
 // 两屏对象短暂共存就会耗尽池子导致设备重启(真机上表现为"跳回主菜单")。
 static void render(void)
@@ -445,6 +521,11 @@ static void render(void)
     for (int i = 0; i < TUNER_STRING_COUNT; i++) s_tun_pills[i] = NULL;
     s_tun_freq = s_tun_status = s_tun_needle = s_tun_target = NULL;
     s_tuner_seq = -1;
+    for (int i = 0; i < METRO_BEATS; i++) s_met_dots[i] = NULL;
+    s_met_bpm_lab = s_met_status = NULL;
+    s_met_seq = -1;
+    // 离开节拍器页就停止播放(切到别的工具不该继续嗒嗒响)。
+    if (s_page != PAGE_METRONOME) { metronome_audio_set(0, s_met_bpm); s_met_playing = 0; }
 
     const char *title;
     if (s_page == PAGE_HUB)         title = "Guitar Kit";
@@ -452,6 +533,7 @@ static void render(void)
     else if (s_page == PAGE_LIST)   title = CHORD_KEYS[s_key].name;
     else if (s_page == PAGE_TUNER)  title = "Tuner";
     else if (s_page == PAGE_CAPO)   title = "Capo";
+    else if (s_page == PAGE_METRONOME) title = "Metronome";
     else {
         const chord_degree_t *deg = &CHORD_KEYS[s_key].degrees[s_degree];
         title = deg->variants[s_variant[s_key][s_degree]].name;
@@ -463,6 +545,7 @@ static void render(void)
     else if (s_page == PAGE_LIST)   build_list_page(s_scr);
     else if (s_page == PAGE_TUNER)  build_tuner_page(s_scr);
     else if (s_page == PAGE_CAPO)   build_capo_page(s_scr);
+    else if (s_page == PAGE_METRONOME) build_metronome_page(s_scr);
     else                            build_detail_page(s_scr);
     lv_screen_load(s_scr);
 }
@@ -502,6 +585,9 @@ void chords_ui_key(bsp_btn_t btn, bsp_btn_ev_t ev)
                 s_capo_shape = (s_capo_shape + dir + CAPO_SHAPE_KEY_COUNT)
                                % CAPO_SHAPE_KEY_COUNT;
             }
+        } else if (s_page == PAGE_METRONOME) {
+            s_met_bpm = metronome_clamp_bpm(s_met_bpm + dir * 5);
+            metronome_audio_set(s_met_playing, s_met_bpm);   // 播放中改速度即时生效
         } else {
             s_degree = (s_degree + dir + CHORD_DEGREE_COUNT) % CHORD_DEGREE_COUNT;
         }
@@ -530,6 +616,9 @@ void chords_ui_key(bsp_btn_t btn, bsp_btn_ev_t ev)
         if (s_page == PAGE_KEY) { s_key = s_key_sel; s_degree = 0; }
     } else if (s_page == PAGE_CAPO) {        // 切换"夹几品 / 指法调"
         s_capo_sel = 1 - s_capo_sel;
+    } else if (s_page == PAGE_METRONOME) {   // 开始/停止
+        s_met_playing = !s_met_playing;
+        metronome_audio_set(s_met_playing, s_met_bpm);
     } else if (s_page == PAGE_KEY) {         // 进入选中的调
         s_key = s_key_sel;
         s_degree = 0;

@@ -3,6 +3,8 @@ idf_component_register(
          "chords_ui.c"
          "chord_model.c"
          "capo_model.c"
+         "metronome.c"
+         "metronome_audio.c"
          "tuner.c"
          "tuner_audio.c"
          "ui_pixel.c"

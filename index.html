@@ -193,7 +193,7 @@
         </div>
       </div>
       <div style="margin-top:14px; font-size:12px; color:#7e93a6; line-height:1.9; width:296px;">
-        键盘也可操作：<kbd>↑</kbd> <kbd>↓</kbd> = UP / DOWN，<kbd>Enter</kbd> = OK（快速按两次 = 双击返回），<kbd>L</kbd> = 长按 OK（进/出调音器）
+        键盘也可操作：<kbd>↑</kbd> <kbd>↓</kbd> = UP / DOWN，<kbd>Enter</kbd> = OK（两击 = 逐层返回，三击 = 回工具箱），<kbd>L</kbd> = 长按 OK（息屏）
       </div>
     </div>
 
@@ -652,7 +652,7 @@ function renderInfoPanel() {
     const item = HUB_ITEMS[s.hubSel];
     document.getElementById("iChord").textContent = item.name;
     document.getElementById("iCrumb").innerHTML = "工具箱首页 · <kbd>↑</kbd><kbd>↓</kbd> 选工具，<kbd>Enter</kbd>(OK) 进入";
-    setInfo("4 件工具", "和弦词典 · 调音器 · 变调夹速查 · 节拍器", "—", "—");
+    setInfo("4 件工具", "和弦词典 · 调音器 · 变调夹速查 · 节拍器", "三击 OK 回工具箱，长按 OK 息屏", "—");
     return;
   }
   if (s.page === PAGE.KEY) {
@@ -809,26 +809,30 @@ function onUpDown(dir) { /* dir: -1 UP, +1 DOWN */
   else s.degree = (s.degree + dir + 7) % 7;
   render();
 }
-function onOkLong() {                 /* 长按: 工具页回工具箱; 工具箱页立即息屏 */
+function onOkLong() {                 /* 长按: 任何页面立即息屏 */
   if (dimmed) { wakeOnly(); return; }
-  if (s.page === PAGE.HUB) {
-    dimmed = true;
-    screenEl.appendChild(dimEl);
-    dimEl.style.display = "block";
-    return;
-  }
+  dimmed = true;
+  screenEl.appendChild(dimEl);
+  dimEl.style.display = "block";
+}
+let okClicks = 0, okTimer = null;
+function onOkClick() { /* 连击窗口 300ms: 按几下算几击(单击/双击/三击) */
+  if (dimmed) { wakeOnly(); return; }
   armIdle();
+  okClicks++;
+  clearTimeout(okTimer);
+  if (okClicks >= 3) { okClicks = 0; onOkTriple(); return; }
+  okTimer = setTimeout(() => {
+    const n = okClicks; okClicks = 0;
+    if (n === 1) onOkSingle();
+    else if (n === 2) onOkDouble();
+  }, 300);
+}
+function onOkTriple() {               /* 三击: 任何页面回工具箱 */
   if (s.page !== PAGE.HUB) {
     if (s.page === PAGE.METRO) { s.metPlaying = false; }
     s.page = PAGE.HUB; render();
   }
-}
-let okTimer = null;
-function onOkClick() { /* 300ms 内二次点击视为双击（与 BSP 一致） */
-  if (dimmed) { wakeOnly(); return; }
-  armIdle();
-  if (okTimer) { clearTimeout(okTimer); okTimer = null; onOkDouble(); return; }
-  okTimer = setTimeout(() => { okTimer = null; onOkSingle(); }, 300);
 }
 function onOkSingle() {
   if (s.page === PAGE.HUB) { s.page = HUB_ITEMS[s.hubSel].page; }

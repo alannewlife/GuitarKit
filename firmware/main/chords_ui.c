@@ -3,7 +3,8 @@
 //   上/下 短按   HUB=选工具; KEY=切换调; LIST/DETAIL=上一个/下一个级数(循环); TUNER=选目标弦; CAPO=改数值
 //   确定  短按   HUB/KEY/LIST=进入; DETAIL=同一根音上循环拓展变体; TUNER=无; CAPO=切换"夹几品/按什么调"
 //   确定  双击   逐层返回(KEY/TUNER/CAPO->HUB, DETAIL->LIST->KEY)
-//   确定  长按   任何工具页一步回工具箱
+//   确定  三击   任何页面回工具箱
+//   确定  长按   任何页面立即息屏(息屏后任意键只唤醒不触发; 播放中的节拍器继续响)
 // 和弦数据在 chord_model.c; 调音算法在 tuner.c; 变调夹换算在 capo_model.c; 采音任务在 tuner_audio.c。
 // 新工具入口: 在 HUB_ITEMS 表加一行, 网格首页自动多一张卡片。
 #include "chords_ui.h"
@@ -621,15 +622,17 @@ void chords_ui_key(bsp_btn_t btn, bsp_btn_ev_t ev)
     }
     if (btn != BSP_BTN_OK) return;
 
-    if (ev == BSP_BTN_LONG) {                // 长按: 工具页回工具箱; 工具箱页立即息屏
+    if (ev == BSP_BTN_TRIPLE) {              // 三击: 任何页面回工具箱
         if (s_page != PAGE_HUB) {
             s_page = PAGE_HUB;
-            render();
-        } else {
-            s_idle_ms = 0;
-            s_backlight_on = 0;
-            bsp_display_backlight(0);        // 硬件无电源键, 用工具箱长按 OK 代替
+            render();                        // 离开节拍器页时 render 会停掉播放
         }
+        return;
+    }
+    if (ev == BSP_BTN_LONG) {                // 长按: 任何页面立即息屏(播放中的节拍器继续响)
+        s_idle_ms = 0;
+        s_backlight_on = 0;
+        bsp_display_backlight(0);
         return;
     }
     if (ev == BSP_BTN_DOUBLE) {              // 逐层返回

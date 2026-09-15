@@ -36,6 +36,7 @@ static void on_event(void *arg, void *usr_data, bsp_btn_ev_t ev) {
 static void cb_press (void *a, void *u) { on_event(a, u, BSP_BTN_PRESS);  }
 static void cb_click (void *a, void *u) { on_event(a, u, BSP_BTN_CLICK);  }
 static void cb_double(void *a, void *u) { on_event(a, u, BSP_BTN_DOUBLE); }
+static void cb_triple(void *a, void *u) { on_event(a, u, BSP_BTN_TRIPLE); }
 static void cb_long  (void *a, void *u) { on_event(a, u, BSP_BTN_LONG);   }
 
 esp_err_t bsp_button_init(bsp_btn_cb_t cb, void *user) {
@@ -71,6 +72,8 @@ esp_err_t bsp_button_init(bsp_btn_cb_t cb, void *user) {
         iot_button_register_cb(s_btn[i], BUTTON_PRESS_DOWN,      NULL, cb_press,  idx);
         iot_button_register_cb(s_btn[i], BUTTON_SINGLE_CLICK,    NULL, cb_click,  idx);
         iot_button_register_cb(s_btn[i], BUTTON_DOUBLE_CLICK,    NULL, cb_double, idx);
+        button_event_args_t triple_args = { .multiple_clicks = { .clicks = 3 } };
+        iot_button_register_cb(s_btn[i], BUTTON_MULTIPLE_CLICK,  &triple_args, cb_triple, idx);
         iot_button_register_cb(s_btn[i], BUTTON_LONG_PRESS_START,NULL, cb_long,   idx);
     }
 

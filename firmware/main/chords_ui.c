@@ -14,6 +14,7 @@
 #include "tuner.h"
 #include "tuner_audio.h"
 #include "bsp_button.h"
+#include "bsp_display.h"      // bsp_display_backlight(息屏/唤醒)
 #include "ui_pixel.h"
 #include "lvgl.h"
 
@@ -72,6 +73,12 @@ static lv_obj_t *s_met_dots[METRO_BEATS];
 
 static lv_obj_t *s_scr;
 static lv_timer_t *s_tick;
+
+// 自动息屏: 无操作 2 分钟关背光; 调音页与节拍器播放中视为在用不熄屏;
+// 息屏后任意按键只唤醒(不触发动作), 防止半睡状态下误切换。
+#define UI_IDLE_OFF_MS (2u * 60u * 1000u)
+static int s_backlight_on = 1;
+static uint32_t s_idle_ms;
 
 static void metronome_dots_refresh(int beat, int playing);
 
@@ -204,6 +211,17 @@ static void build_tuner_page(lv_obj_t *scr)
 static void tuner_tick(lv_timer_t *t)
 {
     (void)t;
+    // 息屏计时(100ms 一跳): 调音页/节拍器播放中不计时。
+    if (!s_backlight_on) return;
+    if (s_page == PAGE_TUNER || s_met_playing) {
+        s_idle_ms = 0;
+    } else if ((s_idle_ms += 100) >= UI_IDLE_OFF_MS) {
+        s_idle_ms = 0;
+        s_backlight_on = 0;
+        bsp_display_backlight(0);
+        return;
+    }
+
     if (s_page == PAGE_METRONOME && s_scr) {
         metronome_info_t m = metronome_audio_info();
         if (m.seq != s_met_seq) {
@@ -565,6 +583,12 @@ void chords_ui_enter(void)
 
 void chords_ui_key(bsp_btn_t btn, bsp_btn_ev_t ev)
 {
+    s_idle_ms = 0;                       // 任意按键都算一次活动
+    if (!s_backlight_on) {               // 息屏中: 只唤醒,不处理动作
+        s_backlight_on = 1;
+        bsp_display_backlight(100);
+        return;
+    }
     if (btn == BSP_BTN_UP || btn == BSP_BTN_DOWN) {
         if (ev != BSP_BTN_CLICK) return;
         int dir = (btn == BSP_BTN_DOWN) ? 1 : -1;

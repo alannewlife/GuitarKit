@@ -322,6 +322,24 @@ const HUB_ITEMS = [
 /* ============ 渲染 ============ */
 const screenEl = document.getElementById("screen");
 const pageTitle = document.getElementById("pageTitle");
+
+/* 自动息屏: 2 分钟无操作整屏变暗, 任意键唤醒(唤醒的那次不触发动作, 与固件一致) */
+let dimmed = false, dimTimer = null;
+const dimEl = document.createElement("div");
+Object.assign(dimEl.style, { position:"absolute", left:"0", top:"0", width:"100%", height:"100%",
+  background:"rgba(0,0,0,0.93)", zIndex:9, display:"none",
+  color:"#8fa3b5", fontSize:"12px", textAlign:"center", paddingTop:"140px" });
+dimEl.textContent = "— press any key —";
+function armIdle() {
+  clearTimeout(dimTimer);
+  dimTimer = setTimeout(() => {
+    dimmed = true;
+    screenEl.appendChild(dimEl);
+    dimEl.style.display = "block";
+  }, 120000);
+}
+function wakeOnly() { dimmed = false; dimEl.style.display = "none"; armIdle(); }
+armIdle();
 const pageHint = document.getElementById("pageHint");
 const dynamicEls = [];   // 每次重建的动态元素
 
@@ -771,6 +789,8 @@ function metSchedule() {
 
 /* ============ 按键事件（与固件一致的语义） ============ */
 function onUpDown(dir) { /* dir: -1 UP, +1 DOWN */
+  if (dimmed) { wakeOnly(); return; }
+  armIdle();
   if (s.page === PAGE.HUB) s.hubSel = (s.hubSel + dir + HUB_ITEMS.length) % HUB_ITEMS.length;
   else if (s.page === PAGE.METRO) {
     s.metBpm = Math.max(40, Math.min(240, s.metBpm + dir * 5));
@@ -790,6 +810,8 @@ function onUpDown(dir) { /* dir: -1 UP, +1 DOWN */
   render();
 }
 function onOkLong() {                 /* 长按: 任何工具页回工具箱 */
+  if (dimmed) { wakeOnly(); return; }
+  armIdle();
   if (s.page !== PAGE.HUB) {
     if (s.page === PAGE.METRO) { s.metPlaying = false; }
     s.page = PAGE.HUB; render();
@@ -797,6 +819,8 @@ function onOkLong() {                 /* 长按: 任何工具页回工具箱 */
 }
 let okTimer = null;
 function onOkClick() { /* 300ms 内二次点击视为双击（与 BSP 一致） */
+  if (dimmed) { wakeOnly(); return; }
+  armIdle();
   if (okTimer) { clearTimeout(okTimer); okTimer = null; onOkDouble(); return; }
   okTimer = setTimeout(() => { okTimer = null; onOkSingle(); }, 300);
 }
@@ -860,6 +884,8 @@ btnOK.addEventListener("mouseleave", () => {
 });
 
 document.addEventListener("keydown", (e) => {
+  if (dimmed) { e.preventDefault(); wakeOnly(); return; }
+  armIdle();
   if (e.key === "ArrowUp")   { e.preventDefault(); onUpDown(-1); }
   if (e.key === "ArrowDown") { e.preventDefault(); onUpDown(1); }
   if (e.key === "Enter")     { e.preventDefault(); onOkClick(); }

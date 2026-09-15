@@ -109,6 +109,75 @@ int tuner_detect_freq_x100(const int16_t *x, int n, int fs)
     return freq_x100;
 }
 
+// 分数滞后的归一化互相关: 滞后段按线性插值取值。
+static double ncf_frac(const int16_t *x, int n, int mean, double tau)
+{
+    int m = (int)tau;
+    double frac = tau - m;
+    if (m + 1 >= n) return 0.0;
+    double r = 0.0, e0 = 0.0, e1 = 0.0;
+    for (int i = 0; i + m + 1 < n; i++) {
+        double a = x[i] - mean;
+        double b = (x[i + m] - mean) * (1.0 - frac)
+                 + (x[i + m + 1] - mean) * frac;
+        r += a * b;
+        e0 += a * a;
+        e1 += b * b;
+    }
+    if (e0 <= 0.0 || e1 <= 0.0) return 0.0;
+    return r / sqrt(e0 * e1);
+}
+
+int tuner_detect_freq_x100_near(const int16_t *x, int n, int fs, int center_x100)
+{
+    if (center_x100 < TUNER_MIN_HZ * 100 || center_x100 > TUNER_MAX_HZ * 100) {
+        return 0;
+    }
+    if (fs <= 0 || n < 2 * fs / TUNER_MIN_HZ) return 0;
+    if (tuner_rms(x, n) < TUNER_RMS_GATE) return 0;
+
+    int64_t sum = 0;
+    for (int i = 0; i < n; i++) sum += x[i];
+    const int mean = (int)(sum / n);
+
+    // 窗口: center 周期 ±580 音分(滞后因子约 1.4)。锁弦后倍/半周期必在窗外。
+    int lag0 = (int)(fs * 100.0 / center_x100 + 0.5);
+    int lag_lo = (int)(lag0 / 1.4);
+    int lag_hi = (int)(lag0 * 1.4);
+    if (lag_lo < 4) lag_lo = 4;
+    if (lag_hi >= n - 2) lag_hi = n - 2;
+    if (lag_lo >= lag_hi) return 0;
+
+    double best = 0.0;
+    int best_m = 0;
+    for (int m = lag_lo; m <= lag_hi; m++) {
+        double v = ncf_frac(x, n, mean, (double)m);   // 整数滞后=插值退化为直取
+        if (v > best) { best = v; best_m = m; }
+    }
+    if (best_m == 0 || best * 1000.0 < NCF_PEAK_MIN) return 0;
+
+    // 细化: 峰值 ±0.75 滞后内按 1/4 步扫描, 再对三点抛物线插值。
+    double taus[7], vals[7];
+    for (int k = 0; k < 7; k++) {
+        taus[k] = best_m - 0.75 + 0.25 * k;
+        vals[k] = ncf_frac(x, n, mean, taus[k]);
+    }
+    int top = 0;
+    for (int k = 1; k < 7; k++) if (vals[k] > vals[top]) top = k;
+    double tau = taus[top];
+    if (top > 0 && top < 6) {
+        double a = vals[top - 1], b = vals[top], c = vals[top + 1];
+        double denom = a - 2.0 * b + c;
+        if (denom < 0.0) tau = taus[top] + 0.25 * 0.5 * (a - c) / denom;
+    }
+
+    int freq_x100 = (int)(fs * 100.0 / tau + 0.5);
+    // 越出窗口对应的音分范围说明不是这根弦的音, 视为无效。
+    int cents = tuner_cents(center_x100, freq_x100);
+    if (cents < -600 || cents > 600) return 0;
+    return freq_x100;
+}
+
 int tuner_cents(int target_x100, int freq_x100)
 {
     if (target_x100 <= 0 || freq_x100 <= 0) return 0;

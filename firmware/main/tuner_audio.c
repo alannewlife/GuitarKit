@@ -16,6 +16,13 @@
 
 static tuner_result_t s_pub;    // 最新结果(seq 最后写,配对错位最多差一帧)
 static TaskHandle_t s_task;
+static int s_center = -1;       // 锁定弦的目标频率 x100; -1 = 全范围
+
+void tuner_audio_set_string(int string_idx)
+{
+    s_center = (string_idx >= 0 && string_idx < TUNER_STRING_COUNT)
+        ? TUNER_STRINGS[string_idx].freq_x100 : -1;
+}
 
 tuner_result_t tuner_audio_result(void)
 {
@@ -35,20 +42,33 @@ static void audio_task(void *arg)
     }
     ESP_LOGI(TAG, "mic ready @%dHz", TUNER_FS);
 
+    // 三帧中值滤波的滑动缓冲: 单帧毛刺(噪声/误检)不会传到界面。
+    int hist[3] = { 0, 0, 0 };
+
     for (;;) {
         if (bsp_audio_read(buf, sizeof(buf)) != ESP_OK) {
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
-        int f = tuner_detect_freq_x100(buf, TUNER_FRAME, TUNER_FS);
+        int f = (s_center > 0)
+            ? tuner_detect_freq_x100_near(buf, TUNER_FRAME, TUNER_FS, s_center)
+            : tuner_detect_freq_x100(buf, TUNER_FRAME, TUNER_FS);
+
+        hist[0] = hist[1];
+        hist[1] = hist[2];
+        hist[2] = f;
+        int a = hist[0], b = hist[1], c = hist[2];
+        int lo = a < b ? a : b, hi = a > b ? a : b;
+        int med = c < lo ? lo : (c > hi ? hi : c);   // 三数取中
+
         int nearest = -1, cents = 0;
-        if (f > 0) {
-            nearest = tuner_nearest_string(f);
+        if (med > 0) {
+            nearest = tuner_nearest_string(med);
             if (nearest >= 0) {
-                cents = tuner_cents(TUNER_STRINGS[nearest].freq_x100, f);
+                cents = tuner_cents(TUNER_STRINGS[nearest].freq_x100, med);
             }
         }
-        s_pub.freq_x100 = f;
+        s_pub.freq_x100 = med;
         s_pub.nearest = nearest;
         s_pub.cents = cents;
         s_pub.seq++;                 // 最后写:读者看到 seq 变了则数据已就绪

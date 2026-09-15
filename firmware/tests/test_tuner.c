@@ -70,5 +70,31 @@ int main(void)
     int f = tuner_detect_freq_x100(x, N, FS);
     assert(tuner_cents(11000, f) < -10);
 
+    /* ---- 锁弦窄窗检测: 高音弦失谐时误差应 <=3 音分(细化后) ---- */
+    struct { double hz; int center; double detuned; } near_cases[] = {
+        { 196.00,   19600, 203.9  },   // G3 偏高 ~+67 音分
+        { 246.94,   24694, 240.0  },   // B3 偏低 ~-49 音分
+        { 329.63,   32963, 341.0  },   // E4 偏高 ~+58 音分
+        { 329.63,   32963, 318.0  },   // E4 偏低 ~-62 音分
+    };
+    for (unsigned i = 0; i < sizeof(near_cases)/sizeof(near_cases[0]); i++) {
+        make_tone(x, N, near_cases[i].detuned, 10000, 500);
+        int fn = tuner_detect_freq_x100_near(x, N, FS, near_cases[i].center);
+        int cn = tuner_cents((int)(near_cases[i].detuned * 100), fn);
+        printf("near %.2fHz center %d -> %d.%02dHz (%+d cent)\n",
+               near_cases[i].detuned, near_cases[i].center,
+               fn / 100, fn % 100, cn);
+        assert(fn > 0);
+        assert(cn > -3 && cn < 3);
+    }
+
+    /* ---- 窗口拒收: 锁 E4 却弹 A2(差约 -1800 音分) -> 无效 ---- */
+    make_tone(x, N, 110.0, 12000, 0);
+    assert(tuner_detect_freq_x100_near(x, N, FS, 32963) == 0);
+
+    /* ---- 静音/响度不足: 锁弦模式同样返回 0 ---- */
+    for (int i = 0; i < N; i++) x[i] = 100;
+    assert(tuner_detect_freq_x100_near(x, N, FS, 19600) == 0);
+
     return 0;
 }

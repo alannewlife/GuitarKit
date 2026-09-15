@@ -18,6 +18,11 @@ extern const tuner_string_t TUNER_STRINGS[TUNER_STRING_COUNT];
 // 采样段的响度(去直流后的 RMS)。低于 BSP 麦克风底噪即视为没有弹弦。
 int tuner_rms(const int16_t *x, int n);
 
+// 锁弦模式: 只在 center 预期滞后 ±580 音分的窄窗内找基频(排除倍/半周期),
+// 峰值处再做 1/4 采样步长的分数滞后细化, 把高频弦(周期短)的量化误差压到 ~2 音分。
+// 窗内找不到可信峰(没弹/弹错弦/噪声)返回 0。
+int tuner_detect_freq_x100_near(const int16_t *x, int n, int fs, int center_x100);
+
 // 从一段 PCM 里估计基频,返回频率 x100(如 11025 = 110.25Hz)。
 // 检测不到音(静音/噪声)返回 0。算法: 去直流 -> 归一化自相关 -> 半周期校正
 // -> 抛物线插值。要求 n >= 2 * fs / 60(至少两个最低目标周期的窗口)。

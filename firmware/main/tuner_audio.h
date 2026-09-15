@@ -11,6 +11,10 @@ typedef struct {
     int seq;         // 帧序号,每帧 +1(UI 用来识别新数据)
 } tuner_result_t;
 
+// 锁定目标弦(-1 解锁=全范围扫描)。锁定后检测只在目标频率 ±580 音分窗内进行,
+// 倍/半周期误判被窗口排除, 高频弦的量化误差由分数滞后细化压低。
+void tuner_audio_set_string(int string_idx);
+
 // 启动后台采音任务(内部完成 bsp_audio_init 与 16kHz 格式设置,只启动一次)。
 void tuner_audio_start(void);
 

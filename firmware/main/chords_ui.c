@@ -154,6 +154,8 @@ static void hint_bar(lv_obj_t *scr, const char *text)
 
 static void tuner_pill_refresh(void)
 {
+    // 锁弦: 检测窗口跟随选中的弦(窄窗排除倍/半周期, 细化压低高频误差)。
+    tuner_audio_set_string(s_tuner_string);
     // 控件指针可能尚未建全(整屏重建的中途),为空时只跳过,绝不能碰 NULL。
     for (int i = 0; i < TUNER_STRING_COUNT; i++) {
         if (s_tun_pills[i]) set_selected(s_tun_pills[i], i == s_tuner_string);
@@ -564,6 +566,8 @@ static void render(void)
     s_met_seq = -1;
     // 离开节拍器页就停止播放(切到别的工具不该继续嗒嗒响)。
     if (s_page != PAGE_METRONOME) { metronome_audio_set(0, s_met_bpm); s_met_playing = 0; }
+    // 离开调音页解除锁弦, 恢复全范围检测。
+    if (s_page != PAGE_TUNER) tuner_audio_set_string(-1);
 
     const char *title;
     if (s_page == PAGE_HUB)         title = "Guitar Kit";

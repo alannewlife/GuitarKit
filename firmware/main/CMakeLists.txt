@@ -1,0 +1,9 @@
+idf_component_register(
+    SRCS "main.c"
+         "chords_ui.c"
+         "chord_model.c"
+         "ui_pixel.c"
+         "ui_pixel_math.c"
+    INCLUDE_DIRS "."
+    REQUIRES bsp esp_timer
+)

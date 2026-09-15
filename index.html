@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FoloToy AI Passport · 吉他和弦词典 交互示意</title>
+<style>
+  :root {
+    --sky: #1689E8; --sky-dark: #0872C9; --ink: #17202A;
+    --paper: #F4F4EA; --grass: #82BE2D; --grass-dark: #55951D;
+    --yellow: #FFD928; --orange: #FFB23E; --red: #E43B2F; --muted: #D9E7EC;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #10161d; color: #dfe7ee;
+    font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    padding: 28px 16px 60px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; color: #fff; }
+  .sub { color: #8fa3b5; font-size: 13px; margin-bottom: 22px; }
+  .stage { display: flex; gap: 36px; flex-wrap: wrap; align-items: flex-start; }
+
+  /* ---------- 设备外壳 ---------- */
+  .device {
+    background: linear-gradient(160deg, #2a3644, #1b232d);
+    border-radius: 26px; padding: 18px 18px 16px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08);
+    width: 296px; flex: 0 0 auto;
+  }
+  .speaker { display: flex; gap: 5px; justify-content: center; margin-bottom: 10px; }
+  .speaker i { width: 26px; height: 4px; border-radius: 2px; background: #0d1319; }
+  .screen-shell { background: #000; border-radius: 8px; padding: 8px; }
+  .screen {
+    position: relative; width: 240px; height: 320px;
+    background: var(--sky); overflow: hidden;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    image-rendering: pixelated; user-select: none;
+  }
+  /* 像素风通用元素 */
+  .blk { position: absolute; }
+  .cloud1 { left: 188px; top: 8px; } /* 由 JS 绘制 */
+
+  .title-plate {
+    position: absolute; left: 5px; top: 8px; width: 151px; height: 33px;
+    background: var(--paper); border: 3px solid var(--ink);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .title-plate span {
+    color: var(--ink); font-weight: 800; font-size: 15px; letter-spacing: .3px;
+    white-space: nowrap;
+  }
+  .hintbar {
+    position: absolute; left: 10px; top: 268px; width: 220px; height: 16px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .hintbar span {
+    background: var(--ink); color: #ffe9a8; font-size: 9px; font-weight: 700;
+    padding: 2px 8px; white-space: nowrap; letter-spacing: .2px;
+  }
+
+  /* 键选择页卡片 */
+  .keycard {
+    position: absolute; left: 34px; width: 172px; height: 84px;
+    background: var(--paper); border: 4px solid var(--ink);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .keycard .big { font-size: 24px; font-weight: 900; color: var(--ink); }
+  .keycard .small { font-size: 9px; color: #5a6b7a; font-weight: 700; margin-top: 3px; white-space: nowrap; }
+  .keycard.sel { background: var(--yellow); border-color: #fff; }
+  .keycard.sel .small { color: #6b5a00; }
+
+  /* 列表页 */
+  .row {
+    position: absolute; left: 26px; width: 188px; height: 25px;
+    background: var(--paper); border: 3px solid var(--ink);
+    display: flex; align-items: center; padding: 0 8px; cursor: pointer;
+  }
+  .row .roman { width: 38px; font-weight: 900; font-size: 13px; color: var(--sky-dark); }
+  .row .cname { font-weight: 800; font-size: 13px; color: var(--ink); }
+  .row .q { margin-left: auto; font-size: 9px; font-weight: 700; color: #6b7b8a; }
+  .row.sel { background: var(--yellow); border-color: #fff; }
+
+  /* 详情页 */
+  .deg-badge {
+    position: absolute; left: 12px; top: 48px; background: var(--ink); color: var(--yellow);
+    font-weight: 900; font-size: 13px; padding: 3px 8px;
+  }
+  .deg-fn {
+    position: absolute; left: 12px; top: 76px; color: #eaf4ff;
+    font-size: 10px; font-weight: 700; letter-spacing: .3px;
+  }
+  .chord-name {
+    position: absolute; right: 10px; top: 44px; color: #fff;
+    font-size: 30px; font-weight: 900; text-shadow: 2px 2px 0 var(--ink);
+  }
+  .diagram { position: absolute; left: 18px; top: 96px; }
+  .side-info { position: absolute; left: 138px; top: 102px; width: 92px; }
+  .side-info .qn { color: #fff; font-size: 15px; font-weight: 900; text-shadow: 1px 1px 0 var(--ink); }
+  .side-info .qq { color: #ffe9a8; font-size: 11px; font-weight: 800; margin-top: 3px; }
+  .side-info .nt { color: #eaf4ff; font-size: 11px; font-weight: 700; margin-top: 5px; line-height: 1.5; }
+  .side-info .ch { color: #cfe6ff; font-size: 9px; margin-top: 5px; line-height: 1.45; }
+  .var-dots { position: absolute; left: 138px; top: 236px; display: flex; gap: 5px; align-items: center; }
+  .var-dots .d { width: 9px; height: 9px; background: rgba(255,255,255,.35); border: 2px solid var(--ink); }
+  .var-dots .d.on { background: var(--yellow); }
+  .var-dots .lab { color: #fff; font-size: 10px; font-weight: 800; margin-left: 3px; }
+
+  /* 和弦图（canvas 绘制） */
+  .diagram canvas { display: block; }
+
+  /* ---------- 按键 ---------- */
+  .keys { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding: 0 6px; }
+  .btn {
+    border: none; cursor: pointer; color: #fff; font-weight: 900; font-size: 12px;
+    border-radius: 50%; box-shadow: 0 5px 0 #0d1319, 0 8px 14px rgba(0,0,0,.4);
+    transition: transform .05s, box-shadow .05s; outline: none; font-family: inherit;
+  }
+  .btn.small-btn { width: 54px; height: 54px; background: #3c4a5a; }
+  .btn.ok-btn { width: 64px; height: 64px; background: var(--orange); font-size: 14px; color: #4a2c00; }
+  .btn.press { transform: translateY(4px); box-shadow: 0 1px 0 #0d1319; }
+  .keylab { text-align: center; font-size: 10px; color: #7e93a6; margin-top: 5px; }
+
+  /* ---------- 信息面板 ---------- */
+  .panel {
+    flex: 1 1 420px; min-width: 340px; max-width: 620px;
+    background: #17202a; border: 1px solid #2c3a48; border-radius: 14px; padding: 20px 22px;
+  }
+  .panel h2 { font-size: 16px; color: #fff; margin-bottom: 10px; }
+  .panel h2 em { font-style: normal; color: var(--yellow); }
+  .crumb { font-size: 13px; color: #9db1c2; margin-bottom: 12px; }
+  .crumb b { color: #fff; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; font-size: 13px; }
+  .info-grid .k { color: #7e93a6; }
+  .info-grid .v { color: #e8eff5; font-weight: 600; }
+  .tip { margin-top: 14px; font-size: 12px; color: #9db1c2; line-height: 1.7; border-top: 1px dashed #2c3a48; padding-top: 10px; }
+  .tip b { color: var(--yellow); }
+  kbd {
+    background: #26313d; border: 1px solid #3a4a5a; border-bottom-width: 3px;
+    border-radius: 5px; padding: 1px 7px; font-size: 11px; color: #fff; font-family: inherit;
+  }
+
+  /* ---------- 和弦总表 ---------- */
+  .ref { margin-top: 46px; }
+  .ref h2 { color: #fff; font-size: 18px; margin-bottom: 6px; }
+  .ref .note { color: #8fa3b5; font-size: 13px; margin-bottom: 18px; }
+  .ref-key { color: var(--yellow); font-size: 16px; font-weight: 800; margin: 22px 0 10px; }
+  .ref-grid { display: flex; flex-wrap: wrap; gap: 14px; }
+  .ref-card {
+    background: #17202a; border: 1px solid #2c3a48; border-radius: 10px;
+    padding: 10px 12px 8px; width: 158px;
+  }
+  .ref-card .rc-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px; }
+  .ref-card .rc-name { color: #fff; font-weight: 900; font-size: 17px; }
+  .ref-card .rc-roman { color: var(--sky); font-weight: 800; font-size: 11px; }
+  .ref-card .rc-q { color: #8fa3b5; font-size: 11px; margin-bottom: 6px; }
+  .ref-card .rc-notes { color: #c8d6e2; font-size: 11px; margin-top: 6px; }
+  .ref-card .rc-hint { color: #e0a33c; font-size: 10px; margin-top: 2px; }
+  .ref-card canvas { display: block; margin: 0 auto; }
+
+  footer { margin-top: 40px; color: #66798c; font-size: 12px; line-height: 1.8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>吉他和弦词典 · FoloToy AI Passport 交互示意</h1>
+  <div class="sub">C 大调 / G 大调 · 三和弦 + 七和弦拓展（属七 / 大七 / 小七 / 半减七）· 与固件 <code>feature/guitar-chords</code> 同一份数据与交互设计</div>
+
+  <div class="stage">
+    <!-- 设备 -->
+    <div>
+      <div class="device">
+        <div class="speaker"><i></i><i></i><i></i></div>
+        <div class="screen-shell">
+          <div class="screen" id="screen">
+            <div class="title-plate"><span id="pageTitle">Chord Book</span></div>
+            <div class="hintbar"><span id="pageHint"></span></div>
+          </div>
+        </div>
+        <div class="keys">
+          <div style="text-align:center">
+            <button class="btn small-btn" id="btnUP">▲</button>
+            <div class="keylab">UP</div>
+          </div>
+          <div style="text-align:center">
+            <button class="btn small-btn" id="btnDOWN">▼</button>
+            <div class="keylab">DOWN</div>
+          </div>
+          <div style="text-align:center">
+            <button class="btn ok-btn" id="btnOK">OK</button>
+            <div class="keylab">OK（连按两次 = 返回）</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:14px; font-size:12px; color:#7e93a6; line-height:1.9; width:296px;">
+        键盘也可操作：<kbd>↑</kbd> <kbd>↓</kbd> = UP / DOWN，<kbd>Enter</kbd> = OK（快速按两次 = 双击返回）
+      </div>
+    </div>
+
+    <!-- 中文信息面板 -->
+    <div class="panel">
+      <h2>当前查看：<em id="iChord">—</em></h2>
+      <div class="crumb" id="iCrumb">—</div>
+      <div class="info-grid">
+        <div class="k">和弦性质</div><div class="v" id="iQuality">—</div>
+        <div class="k">构成音</div><div class="v" id="iNotes">—</div>
+        <div class="k">按法提示</div><div class="v" id="iHint">—</div>
+        <div class="k">级数功能</div><div class="v" id="iFn">—</div>
+      </div>
+      <div class="tip" id="iTheory">
+        <b>玩法：</b>进入某一级后，短按 <b>OK</b> 会在同一个根音上循环切换
+        「三和弦 → 调内七和弦 → 属七」等拓展；以后想加 sus4、add9、六和弦，
+        只需要在每级的变体表末尾追加一条即可，按键操作不变。
+      </div>
+    </div>
+  </div>
+
+  <!-- 全部和弦总表 -->
+  <div class="ref" id="refSection">
+    <h2>附：C 大调 / G 大调 全部和弦（固件内置的 40 个指法）</h2>
+    <div class="note">
+      每一级的第一个是调内三和弦（最常用），短按 OK 依次切换到调内七和弦、属七等拓展。
+      小 F、Bm7 等给了简化按法；横按和弦标注了「横按」。
+    </div>
+    <div id="refBody"></div>
+  </div>
+
+  <footer>
+    数据与固件一致：每个和弦存 6 弦品位 + 指法 + 构成音；vii° 级的 F#dim 给的是常用转位按法（无低音根音）。<br>
+    本页面为纯前端示意，双击 OK 的判定与真机 BSP 按键组件一致（约 300ms 内两击）。
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+ * 和弦数据 —— 与固件 main/chord_model.c 完全一致
+ * frets: 6弦(E A D G B e)，null=闷音(x)，0=空弦，1..=品位
+ * fingers: 指法(1食 2中 3无 4小)，0=不按
+ * ============================================================ */
+function C(name, q, qcn, notes, frets, fingers, hint) {
+  return { name, q, qcn, notes, frets, fingers, hint: hint || "" };
+}
+
+const CH = {
+  C:      C("C","Major","大三和弦","C E G",      [-1,3,2,0,1,0], [0,3,2,0,1,0]),
+  Cmaj7:  C("Cmaj7","Maj 7","大七和弦","C E G B",  [-1,3,2,0,0,0], [0,3,2,0,0,0]),
+  C7:     C("C7","Dom 7","属七和弦","C E G Bb",   [-1,3,2,3,1,0], [0,3,2,4,1,0]),
+  Dm:     C("Dm","Minor","小三和弦","D F A",      [-1,-1,0,2,3,1],[0,0,0,2,3,1]),
+  Dm7:    C("Dm7","Min 7","小七和弦","D F A C",   [-1,-1,0,2,1,1],[0,0,0,2,1,1]),
+  D7:     C("D7","Dom 7","属七和弦","D F# A C",   [-1,-1,0,2,1,2],[0,0,0,2,1,3]),
+  Em:     C("Em","Minor","小三和弦","E G B",      [0,2,2,0,0,0],  [0,2,3,0,0,0]),
+  Em7:    C("Em7","Min 7","小七和弦","E G B D",   [0,2,0,0,0,0],  [0,2,0,0,0,0]),
+  E7:     C("E7","Dom 7","属七和弦","E G# B D",   [0,2,0,1,0,0],  [0,2,0,1,0,0]),
+  F:      C("F","Major","大三和弦","F A C",       [-1,-1,3,2,1,1],[0,0,3,2,1,1],"简化按法(小F)"),
+  Fmaj7:  C("Fmaj7","Maj 7","大七和弦","F A C E", [-1,-1,3,2,1,0],[0,0,3,2,1,0]),
+  F7:     C("F7","Dom 7","属七和弦","F A C Eb",   [1,3,1,2,1,1],  [1,3,1,2,1,1],"横按"),
+  G:      C("G","Major","大三和弦","G B D",       [3,2,0,0,0,3],  [2,1,0,0,0,3]),
+  Gmaj7:  C("Gmaj7","Maj 7","大七和弦","G B D F#",[3,2,0,0,0,2],  [2,1,0,0,0,3]),
+  G7:     C("G7","Dom 7","属七和弦","G B D F",    [3,2,0,0,0,1],  [2,1,0,0,0,1]),
+  Am:     C("Am","Minor","小三和弦","A C E",      [-1,0,2,2,1,0], [0,0,2,3,1,0]),
+  Am7:    C("Am7","Min 7","小七和弦","A C E G",   [-1,0,2,0,1,0], [0,0,2,0,1,0]),
+  A7:     C("A7","Dom 7","属七和弦","A C# E G",   [-1,0,2,0,2,0], [0,0,2,0,2,0]),
+  Bdim:   C("Bdim","Dim","减三和弦","B D F",      [-1,2,3,4,3,-1],[0,1,2,4,3,0]),
+  Bm7b5:  C("Bm7b5","m7b5","半减七和弦","B D F A",[-1,2,3,2,3,-1],[0,1,3,1,3,0],"小横按"),
+  Bm:     C("Bm","Minor","小三和弦","B D F#",     [-1,2,4,4,3,2], [0,1,3,4,2,1],"横按"),
+  Bm7:    C("Bm7","Min 7","小七和弦","B D F# A",  [-1,2,0,2,0,-1],[0,1,0,1,0,0],"简化按法"),
+  B7:     C("B7","Dom 7","属七和弦","B D# F# A",  [-1,2,1,2,0,2], [0,2,1,3,0,4]),
+  D:      C("D","Major","大三和弦","D F# A",      [-1,-1,0,2,3,2],[0,0,0,1,3,2]),
+  Dmaj7:  C("Dmaj7","Maj 7","大七和弦","D F# A C#",[-1,-1,0,2,2,2],[0,0,0,1,1,1],"小横按"),
+  Fsharpdim:  C("F#dim","Dim","减三和弦","F# A C",   [-1,-1,-1,2,1,2],[0,0,0,2,1,3],"转位按法(无低音根音)"),
+  FsharpM7b5: C("F#m7b5","m7b5","半减七和弦","F# A C E",[2,-1,2,2,1,0],[2,0,3,3,1,0],"小横按"),
+};
+
+const KEYS = [
+  { en: "C Major", cn: "C 大调", degrees: [
+    { roman:"I",    fn:"Tonic",       fnCn:"主",     v:[CH.C, CH.Cmaj7, CH.C7] },
+    { roman:"ii",   fn:"Supertonic",  fnCn:"上主",   v:[CH.Dm, CH.Dm7, CH.D7] },
+    { roman:"iii",  fn:"Mediant",     fnCn:"中音",   v:[CH.Em, CH.Em7, CH.E7] },
+    { roman:"IV",   fn:"Subdominant", fnCn:"下属",   v:[CH.F, CH.Fmaj7, CH.F7] },
+    { roman:"V",    fn:"Dominant",    fnCn:"属",     v:[CH.G, CH.Gmaj7, CH.G7] },
+    { roman:"vi",   fn:"Submediant",  fnCn:"下中",   v:[CH.Am, CH.Am7, CH.A7] },
+    { roman:"vii°", fn:"Leading",     fnCn:"导",     v:[CH.Bdim, CH.Bm7b5] },
+  ]},
+  { en: "G Major", cn: "G 大调", degrees: [
+    { roman:"I",    fn:"Tonic",       fnCn:"主",     v:[CH.G, CH.Gmaj7, CH.G7] },
+    { roman:"ii",   fn:"Supertonic",  fnCn:"上主",   v:[CH.Am, CH.Am7, CH.A7] },
+    { roman:"iii",  fn:"Mediant",     fnCn:"中音",   v:[CH.Bm, CH.Bm7, CH.B7] },
+    { roman:"IV",   fn:"Subdominant", fnCn:"下属",   v:[CH.C, CH.Cmaj7, CH.C7] },
+    { roman:"V",    fn:"Dominant",    fnCn:"属",     v:[CH.D, CH.Dmaj7, CH.D7] },
+    { roman:"vi",   fn:"Submediant",  fnCn:"下中",   v:[CH.Em, CH.Em7, CH.E7] },
+    { roman:"vii°", fn:"Leading",     fnCn:"导",     v:[CH.Fsharpdim, CH.FsharpM7b5] },
+  ]},
+];
+
+/* ============ 应用状态（与固件 demo_chords.c 相同的状态机） ============ */
+const PAGE = { KEY: 0, LIST: 1, DETAIL: 2 };
+let s = {
+  page: PAGE.KEY,
+  keySel: 0,                 // 调选择页选中项
+  key: 0,                    // 当前调
+  degree: 0,                 // 当前级数
+  variant: [[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]],  // 每级当前变体(会话内记住)
+};
+
+/* ============ 渲染 ============ */
+const screenEl = document.getElementById("screen");
+const pageTitle = document.getElementById("pageTitle");
+const pageHint = document.getElementById("pageHint");
+const dynamicEls = [];   // 每次重建的动态元素
+
+function clearDynamic() {
+  /* 移除标题牌与提示条之外的所有元素（草地/云/吉祥物每次重画） */
+  [...screenEl.children].forEach(c => {
+    if (c !== pageTitle.parentElement && c !== pageHint.parentElement) c.remove();
+  });
+  dynamicEls.forEach(n => { if (n.isConnected) n.remove(); });
+  dynamicEls.length = 0;
+}
+function el(cls, parent) {
+  const d = document.createElement("div");
+  d.className = cls; parent.appendChild(d); dynamicEls.push(d); return d;
+}
+function drawGrass() { /* 像素草地 */
+  const g1 = document.createElement("div");
+  Object.assign(g1.style, { position:"absolute", left:"0", top:"286px", width:"240px", height:"34px", background:"var(--grass)" });
+  const g2 = g1.cloneNode(); g2.style.height = "4px"; g2.style.background = "#A7D93E";
+  screenEl.appendChild(g1); screenEl.appendChild(g2);
+  for (let x = 0; x < 240; x += 30) {
+    const b1 = document.createElement("div");
+    Object.assign(b1.style, { position:"absolute", left:x+"px", top:"312px", width:"18px", height:"8px", background:"var(--grass-dark)" });
+    const b2 = document.createElement("div");
+    Object.assign(b2.style, { position:"absolute", left:(x+18)+"px", top:"316px", width:"12px", height:"4px", background:"#75452E" });
+    screenEl.appendChild(b1); screenEl.appendChild(b2);
+  }
+}
+function drawCloud() { /* 像素云 */
+  const parts = [ [189,15,43,10,"#17202A"], [193,12,35,10,"#fff"], [200,8,10,9,"#fff"], [215,9,9,8,"#fff"] ];
+  for (const [x,y,w,h,c] of parts) {
+    const b = document.createElement("div");
+    Object.assign(b.style, { position:"absolute", left:x+"px", top:y+"px", width:w+"px", height:h+"px", background:c });
+    screenEl.appendChild(b);
+  }
+}
+function drawMascot(x, y) { /* 小电视机器人（与固件 ui_pixel.c 一致） */
+  const m = document.createElement("div");
+  Object.assign(m.style, { position:"absolute", left:x+"px", top:y+"px", width:"38px", height:"48px" });
+  const parts = [ [18,0,3,6,"#17202A"], [16,0,7,3,"#FFB23E"], [3,6,32,24,"#17202A"],
+    [0,12,5,10,"#7557D9"], [33,12,5,10,"#7557D9"], [7,10,24,16,"#B9F3FF"],
+    [11,14,4,6,"#294B7A","eye"], [23,14,4,6,"#294B7A","eye"], [16,22,7,2,"#7557D9"],
+    [10,29,18,4,"#FFB23E"], [8,33,22,11,"#7557D9"], [3,35,5,7,"#B9F3FF"], [30,35,5,7,"#B9F3FF"],
+    [8,44,9,4,"#17202A"], [21,44,9,4,"#17202A"] ];
+  for (const [px,py,w,h,c,tag] of parts) {
+    const b = document.createElement("div");
+    Object.assign(b.style, { position:"absolute", left:px+"px", top:py+"px", width:w+"px", height:h+"px", background:c });
+    if (tag === "eye") {
+      b.style.animation = "blink 2s step-end infinite";
+    }
+    m.appendChild(b);
+  }
+  screenEl.appendChild(m);
+}
+/* 眨眼动画 */
+const style = document.createElement("style");
+style.textContent = "@keyframes blink { 0%,92% {opacity:1} 93%,97% {opacity:.2} 98%,100% {opacity:1} }";
+document.head.appendChild(style);
+
+/* ---------- 和弦图 canvas ---------- */
+function drawChordDiagram(canvas, chord, scale) {
+  scale = scale || 1;
+  const W = 6, FRET_N = 4, SW = 16 * scale, FH = 26 * scale, PAD = 14 * scale;
+  const hasHighFret = chord.frets.some(f => f > FRET_N);
+  const baseFret = hasHighFret ? Math.max(...chord.frets.filter(f => f > 0)) - FRET_N + 1 : 1;
+  const w = PAD * 2 + (W - 1) * SW + 20 * scale;
+  const h = PAD + 12 * scale + FRET_N * FH + 8 * scale;
+  canvas.width = w; canvas.height = h;
+  canvas.style.width = w + "px"; canvas.style.height = h + "px";
+  const ctx = canvas.getContext("2d");
+  const ink = "#F4F4EA";  /* 详情页深色底上的浅色线 */
+  const x0 = PAD, yTop = PAD + 12 * scale;
+
+  /* 品位标注 */
+  ctx.fillStyle = ink; ctx.font = `700 ${10 * scale}px Helvetica`;
+  if (baseFret > 1) {
+    ctx.fillText(baseFret + "fr", 1 * scale, yTop + FH + FH / 2 + 4 * scale);
+  }
+
+  /* 弦（竖线） */
+  ctx.strokeStyle = ink; ctx.lineWidth = 1.6 * scale;
+  for (let i = 0; i < W; i++) {
+    const x = x0 + i * SW;
+    ctx.beginPath(); ctx.moveTo(x, yTop); ctx.lineTo(x, yTop + FRET_N * FH); ctx.stroke();
+  }
+  /* 品（横线） */
+  for (let f = 0; f <= FRET_N; f++) {
+    const y = yTop + f * FH;
+    ctx.lineWidth = (f === 0 ? 6 : 1.6) * scale;
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + (W - 1) * SW, y); ctx.stroke();
+  }
+  /* 标记 x / o / 圆点 */
+  for (let i = 0; i < W; i++) {
+    const x = x0 + i * SW, fret = chord.frets[i], fing = chord.fingers[i];
+    const yMark = yTop - 7 * scale;
+    if (fret < 0) { /* 闷音 x */
+      ctx.lineWidth = 2 * scale;
+      const r = 3 * scale;
+      ctx.beginPath();
+      ctx.moveTo(x - r, yMark - r); ctx.lineTo(x + r, yMark + r);
+      ctx.moveTo(x + r, yMark - r); ctx.lineTo(x - r, yMark + r);
+      ctx.stroke();
+    } else if (fret === 0) { /* 空弦 o */
+      ctx.lineWidth = 1.6 * scale;
+      ctx.beginPath(); ctx.arc(x, yMark, 3.2 * scale, 0, Math.PI * 2); ctx.stroke();
+    } else {
+      const rel = fret - baseFret + 1;
+      if (rel >= 1 && rel <= FRET_N) {
+        const y = yTop + (rel - 0.5) * FH;
+        ctx.fillStyle = "#FFD928";
+        ctx.beginPath(); ctx.arc(x, y, 7 * scale, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#17202A";
+        ctx.font = `800 ${9.5 * scale}px Helvetica`;
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        if (fing > 0) ctx.fillText(String(fing), x, y + 0.5);
+        ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+      }
+    }
+  }
+}
+
+/* ---------- 页面渲染 ---------- */
+function render() {
+  clearDynamic();
+  drawCloud(); drawGrass();
+
+  if (s.page === PAGE.KEY) {
+    pageTitle.textContent = "Chord Book";
+    pageHint.textContent = "UP/DN select · OK open";
+    KEYS.forEach((k, i) => {
+      const card = el("keycard" + (s.keySel === i ? " sel" : ""), screenEl);
+      card.style.top = (72 + i * 96) + "px";
+      card.innerHTML = `<div class="big">${k.en}</div><div class="small">${k.cn} · 7 degrees · triads & 7ths</div>`;
+      card.onclick = () => { s.keySel = i; render(); };
+    });
+
+  } else if (s.page === PAGE.LIST) {
+    const K = KEYS[s.key];
+    pageTitle.textContent = K.en;
+    pageHint.textContent = "UP/DN move · OK open · 2xOK back";
+    K.degrees.forEach((d, i) => {
+      const v = d.v[s.variant[s.key][i]];
+      const row = el("row" + (s.degree === i ? " sel" : ""), screenEl);
+      row.style.top = (52 + i * 29) + "px";
+      row.innerHTML = `<span class="roman">${d.roman}</span><span class="cname">${v.name}</span><span class="q">${v.q}</span>`;
+      row.onclick = () => { s.degree = i; render(); };
+    });
+
+  } else {
+    const K = KEYS[s.key], D = K.degrees[s.degree];
+    const ch = D.v[s.variant[s.key][s.degree]];
+    pageTitle.textContent = ch.name;
+    pageHint.textContent = "UP/DN chord · OK 7th · 2xOK back";
+
+    const badge = el("deg-badge", screenEl);
+    badge.style.left = "12px"; badge.style.top = "48px";
+    badge.textContent = D.roman;
+    const fn = el("deg-fn", screenEl); fn.textContent = D.fn + " · " + D.fnCn;
+
+    const name = el("chord-name", screenEl); name.textContent = ch.name;
+
+    const dia = el("diagram", screenEl);
+    const cv = document.createElement("canvas");
+    dia.appendChild(cv);
+    drawChordDiagram(cv, ch, 1);
+
+    const si = el("side-info", screenEl);
+    si.innerHTML = `<div class="qn">${ch.q}</div><div class="qq">${ch.qcn}</div>
+      <div class="nt">${ch.notes}</div>
+      <div class="ch">${ch.hint ? "⚠ " + ch.hint : ""}</div>`;
+
+    const dots = el("var-dots", screenEl); dots.style.top = "236px";
+    D.v.forEach((_, i) => {
+      const d = document.createElement("div");
+      d.className = "d" + (i === s.variant[s.key][s.degree] ? " on" : "");
+      dots.appendChild(d);
+    });
+    const lab = document.createElement("span");
+    lab.className = "lab"; lab.textContent = (s.variant[s.key][s.degree] + 1) + "/" + D.v.length;
+    dots.appendChild(lab);
+  }
+  renderInfoPanel();
+}
+
+function renderInfoPanel() {
+  const K = KEYS[s.key];
+  if (s.page === PAGE.KEY) {
+    const K2 = KEYS[s.keySel];
+    document.getElementById("iChord").textContent = K2.en + "（" + K2.cn + "）";
+    document.getElementById("iCrumb").innerHTML = "调选择页 · <kbd>↑</kbd><kbd>↓</kbd> 选择调，<kbd>Enter</kbd>(OK) 进入";
+    setInfo("调内 7 个级数", "每级 2~3 个变体：三和弦 + 七和弦", "—", "—");
+    return;
+  }
+  const deg = K.degrees[s.degree];
+  const ch = deg.v[s.variant[s.key][s.degree]];
+  document.getElementById("iChord").textContent = ch.name;
+  document.getElementById("iCrumb").innerHTML =
+    `<b>${K.cn}</b> · 第 <b>${["一","二","三","四","五","六","七"][s.degree]}</b> 级（${deg.roman} ${deg.fnCn}） · 变体 ${s.variant[s.key][s.degree] + 1}/${deg.v.length}`;
+  setInfo(ch.qcn + "（" + ch.q + "）", ch.notes, ch.hint || "常规开放按法", deg.fnCn + "和弦（" + deg.fn + "）");
+}
+function setInfo(q, n, h, f) {
+  document.getElementById("iQuality").textContent = q;
+  document.getElementById("iNotes").textContent = n;
+  document.getElementById("iHint").textContent = h;
+  document.getElementById("iFn").textContent = f;
+}
+
+/* ============ 按键事件（与固件一致的语义） ============ */
+function onUpDown(dir) { /* dir: -1 UP, +1 DOWN */
+  if (s.page === PAGE.KEY) s.keySel = (s.keySel + dir + 2) % 2;
+  else if (s.page === PAGE.LIST) s.degree = (s.degree + dir + 7) % 7;
+  else s.degree = (s.degree + dir + 7) % 7;
+  render();
+}
+let okTimer = null;
+function onOkClick() { /* 300ms 内二次点击视为双击（与 BSP 一致） */
+  if (okTimer) { clearTimeout(okTimer); okTimer = null; onOkDouble(); return; }
+  okTimer = setTimeout(() => { okTimer = null; onOkSingle(); }, 300);
+}
+function onOkSingle() {
+  if (s.page === PAGE.KEY) { s.key = s.keySel; s.degree = 0; s.page = PAGE.LIST; }
+  else if (s.page === PAGE.LIST) { s.page = PAGE.DETAIL; }
+  else { /* 拓展：循环该级数的变体 */
+    const n = KEYS[s.key].degrees[s.degree].v.length;
+    s.variant[s.key][s.degree] = (s.variant[s.key][s.degree] + 1) % n;
+  }
+  render();
+}
+function onOkDouble() {
+  if (s.page === PAGE.LIST) s.page = PAGE.KEY;
+  else if (s.page === PAGE.DETAIL) s.page = PAGE.LIST;
+  render();
+}
+
+/* 按钮绑定 */
+function bindBtn(id, fn) {
+  const b = document.getElementById(id);
+  b.addEventListener("mousedown", () => b.classList.add("press"));
+  const up = () => { b.classList.remove("press"); };
+  b.addEventListener("mouseup", up);
+  b.addEventListener("mouseleave", up);
+  b.addEventListener("click", fn);
+}
+bindBtn("btnUP",   () => onUpDown(-1));
+bindBtn("btnDOWN", () => onUpDown(1));
+bindBtn("btnOK",   () => onOkClick());
+document.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowUp")   { e.preventDefault(); onUpDown(-1); }
+  if (e.key === "ArrowDown") { e.preventDefault(); onUpDown(1); }
+  if (e.key === "Enter")     { e.preventDefault(); onOkClick(); }
+});
+
+/* ============ 和弦总表 ============ */
+function renderRef() {
+  const body = document.getElementById("refBody");
+  KEYS.forEach((K, ki) => {
+    const h = document.createElement("div");
+    h.className = "ref-key"; h.textContent = K.en + "（" + K.cn + "）";
+    body.appendChild(h);
+    const grid = document.createElement("div");
+    grid.className = "ref-grid"; body.appendChild(grid);
+    K.degrees.forEach((D) => {
+      D.v.forEach((ch, vi) => {
+        const card = document.createElement("div");
+        card.className = "ref-card";
+        const head = document.createElement("div"); head.className = "rc-head";
+        head.innerHTML = `<span class="rc-name">${ch.name}</span><span class="rc-roman">${D.roman} · ${vi + 1}/${D.v.length}</span>`;
+        card.appendChild(head);
+        const q = document.createElement("div"); q.className = "rc-q"; q.textContent = ch.qcn; card.appendChild(q);
+        const cv = document.createElement("canvas"); card.appendChild(cv);
+        drawChordDiagram(cv, ch, 1);
+        const nt = document.createElement("div"); nt.className = "rc-notes"; nt.textContent = "构成音 " + ch.notes; card.appendChild(nt);
+        if (ch.hint) { const hh = document.createElement("div"); hh.className = "rc-hint"; hh.textContent = "⚠ " + ch.hint; card.appendChild(hh); }
+        grid.appendChild(card);
+      });
+    });
+  });
+}
+
+render();
+renderRef();
+</script>
+</body>
+</html>

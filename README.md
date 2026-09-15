@@ -1,5 +1,11 @@
 # 吉他工具箱 · Guitar Kit
 
+<p align="center">
+  <img src="assets/guitar-kit-poster.png" alt="吉他工具箱宣传海报：人物弹奏木吉他，旁边展示 Guitar Kit 菜单" width="720">
+</p>
+
+> 宣传海报为 AI 生成的视觉示意；下方功能图来自项目自带的交互示意页面，不是实机照片。
+
 一个为吉他初学者设计的设备端小工具箱，跑在 FoloToy AI Passport 上。目前有**四件工具**：
 
 - **Chords 和弦词典** — C 大调 / G 大调全部 7 个级数、40 个指法，三和弦到属七/大七/小七/半减七
@@ -13,6 +19,20 @@
 
 - **看效果**：双击打开 `index.html`（纯静态单文件，无需服务器）。左边是可交互的设备模拟器（鼠标点按键或键盘 `↑` `↓` `Enter`，`L` = 长按 OK），下面附全部 40 个和弦总表与中文说明。
 - **跑固件**：见下文构建与烧录。开机直接进工具箱首页。
+
+## 界面预览
+
+开机进入工具箱菜单，用 UP / DOWN 选择功能，按 OK 打开：
+
+<p align="center">
+  <img src="assets/menu.png" alt="Guitar Kit 工具箱菜单，包含和弦、调音器、变调夹和节拍器" width="360">
+</p>
+
+| 和弦词典 | 调音器 |
+| --- | --- |
+| <img src="assets/chords.png" alt="C 大三和弦指法图" width="360"><br>查看 C、G 大调常用和弦与拓展变体。 | <img src="assets/tuner.png" alt="调音器音高与音分指针界面" width="360"><br>自动识别琴弦，通过指针和文字提示调音方向。 |
+| **变调夹速查** | **节拍器** |
+| <img src="assets/capo.png" alt="变调夹夹 2 品并使用 C 调指法，实际为 D 调" width="360"><br>图示为夹 2 品、使用 C 调指法，实际得到 D 调。 | <img src="assets/metronome.png" alt="120 BPM 四四拍节拍器播放界面" width="360"><br>图示为 120 BPM、4/4 拍播放状态。 |
 
 ## 交互设计（三键）
 

@@ -118,6 +118,8 @@ idf.py build
 idf.py -p /dev/cu.usbmodem101 flash   # 分段烧录, 不会覆盖受保护的 cardid 分区
 ```
 
+每次构建会额外产出按日期命名的成品 `build/guitar-kit-YYYYMMDD.bin`（与 `guitar-kit.bin` 内容一致），历史日期的文件保留在 build 目录里，方便回溯刷过的版本；`fullclean` 会一并清掉。
+
 注意：设备已开卡时**不要**烧录合并的 8MB 全量镜像（会覆盖 cardid）；始终用分段 `idf.py flash`。目录改名/移动后需先 `idf.py fullclean` 再 build。
 
 ## 假设与已知边界

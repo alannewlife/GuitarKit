@@ -134,20 +134,22 @@ static void draw_diagram(lv_obj_t *scr, const chord_variant_t *ch)
 static void build_key_page(lv_obj_t *scr)
 {
     for (int i = 0; i < CHORD_KEY_COUNT; i++) {
-        lv_obj_t *card = ui_pixel_panel_create(scr, 34, 72 + i * 96,
-                                               172, 80, UI_PAPER);
+        // 196x88 大卡片: 14px 副标题 "7 degrees + 7th chords" 需要约 165px,
+        // 卡片内宽 196-8(边框)-14(内边距) = 174px 才放得下。
+        lv_obj_t *card = ui_pixel_panel_create(scr, 22, 64 + i * 100,
+                                               196, 88, UI_PAPER);
         ui_pixel_set_selected(card, i == s_key_sel, true);
         lv_obj_t *big = lv_label_create(card);
         lv_label_set_text(big, CHORD_KEYS[i].name);
         lv_obj_set_style_text_font(big, &lv_font_montserrat_20, 0);
         lv_obj_set_style_text_color(big, lv_color_hex(UI_INK), 0);
-        lv_obj_align(big, LV_ALIGN_TOP_MID, 0, 12);
+        lv_obj_align(big, LV_ALIGN_TOP_MID, 0, 16);
 
         lv_obj_t *sub = lv_label_create(card);
         lv_label_set_text(sub, "7 degrees + 7th chords");
         lv_obj_set_style_text_font(sub, &lv_font_montserrat_14, 0);
         lv_obj_set_style_text_color(sub, lv_color_hex(0x5A6B7A), 0);
-        lv_obj_align(sub, LV_ALIGN_BOTTOM_MID, 0, -10);
+        lv_obj_align(sub, LV_ALIGN_BOTTOM_MID, 0, -12);
     }
     hint_bar(scr, HINT_KEY);
 }

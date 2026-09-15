@@ -15,6 +15,8 @@
 
 本目录是**独立的一套代码**，不依赖 FoloToy AI Passport 基线仓库；板级支持包（`firmware/components/bsp`，MIT 许可）复制自该基线。
 
+给 AI 助手（Claude/CodeX 等）的仓库规则见 [AGENTS.md](AGENTS.md) / [AGENTS.zh_CN.md](AGENTS.zh_CN.md)——最重要的是**两种固件产物的刷写边界**：自己设备只用分段烧录，商店提审只交合并镜像。
+
 ## 快速开始
 
 - **看效果**：双击打开 `index.html`（纯静态单文件，无需服务器）。左边是可交互的设备模拟器（鼠标点按键或键盘 `↑` `↓` `Enter`，`L` = 长按 OK），下面附全部 40 个和弦总表与中文说明。

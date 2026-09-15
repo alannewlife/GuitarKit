@@ -56,6 +56,8 @@ static int s_tuner_seq = -1;     // 上次处理的帧序号
 static lv_obj_t *s_tun_freq;     // 大字检测频率
 static lv_obj_t *s_tun_status;   // IN TUNE / TUNE UP / TUNE DOWN
 static lv_obj_t *s_tun_needle;   // 音分指针
+static lv_obj_t *s_tun_arrow_l;  // 偏差超下限时的左箭头(太低,拧紧)
+static lv_obj_t *s_tun_arrow_r;  // 偏差超上限时的右箭头(太高,放松)
 static lv_obj_t *s_tun_target;   // 目标弦频率行
 static lv_obj_t *s_tun_pills[TUNER_STRING_COUNT];
 
@@ -197,6 +199,14 @@ static void build_tuner_page(lv_obj_t *scr)
     lv_obj_set_style_border_width(s_tun_needle, 2, 0);
     lv_obj_set_style_border_color(s_tun_needle, lv_color_hex(UI_INK), 0);
 
+    // 越界方向箭头: 偏差超出 ±50 音分时出现在对应边, 直观示出"太靠哪边"。
+    s_tun_arrow_l = label_at(scr, "<<", &lv_font_montserrat_20,
+                             UI_ORANGE, 2, 166);
+    s_tun_arrow_r = label_at(scr, ">>", &lv_font_montserrat_20,
+                             UI_ORANGE, 216, 166);
+    lv_obj_add_flag(s_tun_arrow_l, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_tun_arrow_r, LV_OBJ_FLAG_HIDDEN);
+
     s_tun_status = label_at(scr, "listening...", &lv_font_montserrat_20,
                             0xCFE6FF, 0, 216);
     lv_obj_set_width(s_tun_status, 240);
@@ -262,7 +272,12 @@ static void tuner_tick(lv_timer_t *t)
     if (pin < -50) pin = -50;
     if (pin > 50) pin = 50;
     lv_obj_set_x(s_tun_needle, 120 + pin * 2 - 3);
-    lv_obj_set_x(s_tun_needle, 120 + c * 2 - 3);
+
+    // 越界箭头: 出界才亮对应边, 入界全灭。
+    if (c < -50) lv_obj_remove_flag(s_tun_arrow_l, LV_OBJ_FLAG_HIDDEN);
+    else         lv_obj_add_flag(s_tun_arrow_l, LV_OBJ_FLAG_HIDDEN);
+    if (c > 50)  lv_obj_remove_flag(s_tun_arrow_r, LV_OBJ_FLAG_HIDDEN);
+    else         lv_obj_add_flag(s_tun_arrow_r, LV_OBJ_FLAG_HIDDEN);
 
     if (c > -6 && c < 6) {
         lv_label_set_text(s_tun_status, "IN TUNE");
@@ -542,6 +557,7 @@ static void render(void)
     // 旧屏上的调音控件指针随屏销毁,先清空,防止 tick 访问悬垂指针。
     for (int i = 0; i < TUNER_STRING_COUNT; i++) s_tun_pills[i] = NULL;
     s_tun_freq = s_tun_status = s_tun_needle = s_tun_target = NULL;
+    s_tun_arrow_l = s_tun_arrow_r = NULL;
     s_tuner_seq = -1;
     for (int i = 0; i < METRO_BEATS; i++) s_met_dots[i] = NULL;
     s_met_bpm_lab = s_met_status = NULL;

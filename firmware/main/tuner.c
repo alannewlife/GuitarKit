@@ -8,8 +8,8 @@
 
 #define TUNER_MIN_HZ   60
 #define TUNER_MAX_HZ  500
-#define TUNER_RMS_GATE 200     // 16bit PCM 的静音门限(经验值,按麦克风增益可调)
-#define NCF_PEAK_MIN   550     // x1000: 峰值至少 0.55 才算"有音高"
+#define TUNER_RMS_GATE 600     // 16bit PCM 的响度门限: 高于说话/环境声, 轻拨弦可达数千
+#define NCF_PEAK_MIN   650     // x1000: 峰值至少 0.65 才算"有音高"(语音自相关置信度低)
 #define NCF_OCTAVE     850     // x1000: 半周期处 NCF 达峰值的 0.85 则取半周期
 
 const tuner_string_t TUNER_STRINGS[TUNER_STRING_COUNT] = {

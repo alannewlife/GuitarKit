@@ -193,7 +193,7 @@
         </div>
       </div>
       <div style="margin-top:14px; font-size:12px; color:#7e93a6; line-height:1.9; width:296px;">
-        键盘也可操作：<kbd>↑</kbd> <kbd>↓</kbd> = UP / DOWN，<kbd>Enter</kbd> = OK（两击 = 逐层返回，三击 = 回工具箱），<kbd>L</kbd> = 长按 OK（息屏）
+        键盘也可操作：<kbd>↑</kbd> <kbd>↓</kbd> = UP / DOWN，<kbd>Enter</kbd> = OK（两击 = 逐层返回，三击 = 回工具箱），<kbd>L</kbd> = 长按 OK（息屏，纯黑屏后任意键唤醒）
       </div>
     </div>
 
@@ -327,9 +327,7 @@ const pageTitle = document.getElementById("pageTitle");
 let dimmed = false, dimTimer = null;
 const dimEl = document.createElement("div");
 Object.assign(dimEl.style, { position:"absolute", left:"0", top:"0", width:"100%", height:"100%",
-  background:"rgba(0,0,0,0.93)", zIndex:9, display:"none",
-  color:"#8fa3b5", fontSize:"12px", textAlign:"center", paddingTop:"140px" });
-dimEl.textContent = "— press any key —";
+  background:"#000", zIndex:9, display:"none" });   // 真机息屏 = 背光关闭, 纯黑无文字
 function armIdle() {
   clearTimeout(dimTimer);
   dimTimer = setTimeout(() => {

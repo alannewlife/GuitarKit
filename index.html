@@ -388,6 +388,15 @@ function drawChordDiagram(canvas, chord, scale) {
   const hasHighFret = chord.frets.some(f => f > FRET_N);
   const baseFret = hasHighFret ? Math.max(...chord.frets.filter(f => f > 0)) - FRET_N + 1 : 1;
   const w = PAD * 2 + (W - 1) * SW + 20 * scale;
+  const OPEN_PC = [4, 9, 2, 7, 11, 4];
+  const PCMAP = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const f0 = chord.notes.split(" ")[0];
+  let rootPc = PCMAP[f0[0]] + (f0.includes("#") ? 1 : 0);
+  let root = -1;                                   // 最低的、发出根音的弦
+  for (let i = 0; i < W; i++) {
+    if (chord.frets[i] < 0) continue;
+    if ((OPEN_PC[i] + chord.frets[i]) % 12 === rootPc) { root = i; break; }
+  }
   const h = PAD + 12 * scale + FRET_N * FH + 8 * scale;
   canvas.width = w; canvas.height = h;
   canvas.style.width = w + "px"; canvas.style.height = h + "px";
@@ -401,10 +410,11 @@ function drawChordDiagram(canvas, chord, scale) {
     ctx.fillText(baseFret + "fr", 1 * scale, yTop + FH + FH / 2 + 4 * scale);
   }
 
-  /* 弦（竖线） */
-  ctx.strokeStyle = ink; ctx.lineWidth = 1.6 * scale;
+  /* 弦（竖线）: 根音弦橙色加粗 */
   for (let i = 0; i < W; i++) {
     const x = x0 + i * SW;
+    ctx.strokeStyle = (i === root) ? "#FFB23E" : ink;
+    ctx.lineWidth = (i === root) ? 3 : 1.6 * scale;
     ctx.beginPath(); ctx.moveTo(x, yTop); ctx.lineTo(x, yTop + FRET_N * FH); ctx.stroke();
   }
   /* 品（横线） */
@@ -431,9 +441,9 @@ function drawChordDiagram(canvas, chord, scale) {
       const rel = fret - baseFret + 1;
       if (rel >= 1 && rel <= FRET_N) {
         const y = yTop + (rel - 0.5) * FH;
-        ctx.fillStyle = "#FFD928";
+        ctx.fillStyle = (i === root) ? "#E43B2F" : "#FFD928";   // 根音点红色
         ctx.beginPath(); ctx.arc(x, y, 7 * scale, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#17202A";
+        ctx.fillStyle = (i === root) ? "#fff" : "#17202A";
         ctx.font = `800 ${9.5 * scale}px Helvetica`;
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         if (fing > 0) ctx.fillText(String(fing), x, y + 0.5);
@@ -600,6 +610,10 @@ function render() {
     dia.appendChild(cv);
     drawChordDiagram(cv, ch, 1);
 
+    const leg = el("", screenEl);
+    Object.assign(leg.style, { position:"absolute", left:"18px", top:"238px",
+      color:"#FFB23E", fontSize:"9px", fontWeight:"700" });
+    leg.textContent = "橙色弦 = 根音所在弦";
     const si = el("side-info", screenEl);
     si.innerHTML = `<div class="qn">${ch.q}</div><div class="qq">${ch.qcn}</div>
       <div class="nt">${ch.notes}</div>

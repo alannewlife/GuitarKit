@@ -12,6 +12,32 @@ static int fret_from_char(char c)
     return c - '0';
 }
 
+// notes 串的第一个音名(即根音, 如 "F# A C" -> F#)换算成音级。没有则 -1。
+static int pc_of_first_note(const char *notes)
+{
+    static const int base[7] = { 9, 11, 0, 2, 4, 5, 7 };   // A B C D E F G
+    if (notes[0] < 'A' || notes[0] > 'G') return -1;
+    int pc = base[notes[0] - 'A'];
+    if (notes[1] == '#') pc++;
+    return pc;
+}
+
+// 根音弦: 必须是"最低的一根实际发出根音的弦"(指法图据此画橙色弦)。
+static void check_root_string(const chord_variant_t *ch)
+{
+    static const int OPEN_PC[CHORD_STRINGS] = { 4, 9, 2, 7, 11, 4 };
+    int root_pc = pc_of_first_note(ch->notes);
+    assert(root_pc >= 0);
+    assert(ch->root_string >= 0 && ch->root_string < CHORD_STRINGS);
+
+    for (int i = 0; i < CHORD_STRINGS; i++) {
+        if (ch->fret[i] < 0) continue;
+        int sounded = (OPEN_PC[i] + ch->fret[i]) % 12;
+        if (i < ch->root_string) assert(sounded != root_pc);   // 更低的弦没有根音
+        if (i == ch->root_string) assert(sounded == root_pc);  // 该弦正是根音
+    }
+}
+
 // frets 形如 "x32010"(弦6 -> 弦1), 与 chord_model.c 的数据逐项对照。
 static void expect_variant(int key, int degree, int variant,
                            const char *name, const char *frets)
@@ -35,6 +61,7 @@ static void expect_variant(int key, int degree, int variant,
         }
     }
     assert(sounding > 0);               // 至少有一根弦发声
+    check_root_string(ch);
 }
 
 static void expect_key_shape(int key, const char *key_name)

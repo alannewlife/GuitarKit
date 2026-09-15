@@ -14,10 +14,11 @@
 typedef struct {
     const char *name;     // "Cmaj7"
     const char *quality;  // "Maj 7"(界面只用 ASCII, 固件未内嵌中文字库)
-    const char *notes;    // "G B D F#"(构成音)
+    const char *notes;    // "G B D F#"(构成音, 第一个即根音)
     const char *hint;     // 按法提示, 如 "Barre"; 无提示为 ""
     int8_t fret[CHORD_STRINGS];   // -1=闷音, 0=空弦, 1..12=品位(数据保证 <=4)
     int8_t finger[CHORD_STRINGS]; // 0=不按, 1..4=食中无小
+    int8_t root_string;   // 根音所在弦(0=低E..5=高e, 取最低的那根); 根音未发声为 -1
 } chord_variant_t;
 
 // 调内一个级数(I..vii°)及其变体表。

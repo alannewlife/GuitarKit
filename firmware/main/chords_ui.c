@@ -277,7 +277,10 @@ static void draw_diagram(lv_obj_t *scr, const chord_variant_t *ch)
         block(scr, x0, y0 + f * fh - w / 2, width + 2, w, UI_PAPER);
     }
     for (int i = 0; i < CHORD_STRINGS; i++) {
-        block(scr, x0 + i * sp - 1, y0, 2, 4 * fh, UI_PAPER);
+        // 根音所在的弦: 橙色加粗, 一眼看出根音位置。
+        const int is_root = (i == ch->root_string);
+        block(scr, x0 + i * sp - 1, y0, is_root ? 3 : 2, 4 * fh,
+              is_root ? UI_ORANGE : UI_PAPER);
     }
 
     for (int i = 0; i < CHORD_STRINGS; i++) {
@@ -294,8 +297,9 @@ static void draw_diagram(lv_obj_t *scr, const chord_variant_t *ch)
             lv_obj_set_style_text_align(m, LV_TEXT_ALIGN_CENTER, 0);
         } else {                                   // 按法点 + 指法号
             int row = ch->fret[i] - 1;
+            const int is_root = (i == ch->root_string);
             lv_obj_t *dot = block(scr, x - 8, y0 + row * fh + fh / 2 - 8,
-                                  16, 16, UI_YELLOW);
+                                  16, 16, is_root ? UI_RED : UI_YELLOW);
             lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
             lv_obj_set_style_border_width(dot, 2, 0);
             lv_obj_set_style_border_color(dot, lv_color_hex(UI_INK), 0);
@@ -303,7 +307,8 @@ static void draw_diagram(lv_obj_t *scr, const chord_variant_t *ch)
                 lv_obj_t *num = lv_label_create(dot);
                 lv_label_set_text_fmt(num, "%d", ch->finger[i]);
                 lv_obj_set_style_text_font(num, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(num, lv_color_hex(UI_INK), 0);
+                lv_obj_set_style_text_color(num,
+                    lv_color_hex(is_root ? 0xFFFFFF : UI_INK), 0);
                 lv_obj_center(num);
             }
         }
@@ -441,6 +446,9 @@ static void build_detail_page(lv_obj_t *scr)
     lv_obj_set_style_text_color(name, lv_color_hex(0xFFFFFF), 0);
 
     draw_diagram(scr, ch);
+    // 图例: 橙色弦即根音所在弦(根音点为红色)。
+    (void)label_at(scr, "orange = root string",
+                   &lv_font_montserrat_12, UI_ORANGE, 14, 238);   // LVGL 持有,无需句柄
 
     label_at(scr, ch->quality, &lv_font_montserrat_20, UI_YELLOW, 128, 88);
     label_at(scr, ch->notes, &lv_font_montserrat_14, 0xEAF4FF, 128, 118);

@@ -535,14 +535,10 @@ static void render(void)
     const char *title;
     if (s_page == PAGE_HUB)         title = "Guitar Kit";
     else if (s_page == PAGE_KEY)    title = "Chord Book";
-    else if (s_page == PAGE_LIST)   title = CHORD_KEYS[s_key].name;
     else if (s_page == PAGE_TUNER)  title = "Tuner";
     else if (s_page == PAGE_CAPO)   title = "Capo";
     else if (s_page == PAGE_METRONOME) title = "Metronome";
-    else {
-        const chord_degree_t *deg = &CHORD_KEYS[s_key].degrees[s_degree];
-        title = deg->variants[s_variant[s_key][s_degree]].name;
-    }
+    else                            title = CHORD_KEYS[s_key].name;   // LIST/DETAIL 均显示调名
 
     s_scr = ui_pixel_screen_create(title);
     if (s_page == PAGE_HUB)         build_hub_page(s_scr);

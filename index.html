@@ -595,7 +595,7 @@ function render() {
   } else {
     const K = KEYS[s.key], D = K.degrees[s.degree];
     const ch = D.v[s.variant[s.key][s.degree]];
-    pageTitle.textContent = ch.name;
+    pageTitle.textContent = KEYS[s.key].en;
     pageHint.textContent = "UP/DN chord · OK 7th · 2xOK back";
 
     const badge = el("deg-badge", screenEl);

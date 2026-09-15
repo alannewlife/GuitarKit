@@ -163,8 +163,8 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>吉他和弦词典 · FoloToy AI Passport 交互示意</h1>
-  <div class="sub">C 大调 / G 大调 · 三和弦 + 七和弦拓展（属七 / 大七 / 小七 / 半减七）· 与固件 <code>feature/guitar-chords</code> 同一份数据与交互设计</div>
+  <h1>吉他工具箱 · FoloToy AI Passport 交互示意</h1>
+  <div class="sub">和弦词典 + 调音器 + 变调夹速查 · 与固件 <code>guitar-kit</code> 同一套数据与交互设计</div>
 
   <div class="stage">
     <!-- 设备 -->
@@ -294,15 +294,27 @@ const KEYS = [
 ];
 
 /* ============ 应用状态（与固件 chords_ui.c 相同的状态机） ============ */
-const PAGE = { KEY: 0, LIST: 1, DETAIL: 2, TUNER: 3 };
+const PAGE = { HUB: 0, KEY: 1, LIST: 2, DETAIL: 3, TUNER: 4, CAPO: 5 };
 let s = {
-  page: PAGE.KEY,
+  page: PAGE.HUB,
+  hubSel: 0,                 // 工具箱选中项
   keySel: 0,                 // 调选择页选中项
   key: 0,                    // 当前调
   degree: 0,                 // 当前级数
   tunerString: 0,            // 调音页目标弦
+  capoSel: 0,                // 变调夹: 0=夹几品, 1=指法调
+  capoFret: 2,               // 变调夹品数(0=不夹)
+  capoShape: 0,              // 指法调下标
   variant: [[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]],  // 每级当前变体(会话内记住)
 };
+const KEY_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const CAPO_SHAPES = [ { n: "C", pc: 0 }, { n: "G", pc: 7 }, { n: "D", pc: 2 },
+                      { n: "A", pc: 9 }, { n: "E", pc: 4 } ];
+const HUB_ITEMS = [
+  { name: "Chords", sub: "40 chords",  page: PAGE.KEY   },
+  { name: "Tuner",  sub: "mic pitch",  page: PAGE.TUNER },
+  { name: "Capo",   sub: "key lookup", page: PAGE.CAPO  },
+];
 
 /* ============ 渲染 ============ */
 const screenEl = document.getElementById("screen");
@@ -433,9 +445,23 @@ function render() {
   clearDynamic();
   drawCloud(); drawGrass();
 
-  if (s.page === PAGE.KEY) {
+  if (s.page === PAGE.HUB) {
+    pageTitle.textContent = "Guitar Kit";
+    pageHint.textContent = "UP/DN sel · OK open";
+    HUB_ITEMS.forEach((item, i) => {
+      const col = i % 2, row = (i / 2) | 0;
+      const card = el("row" + (s.hubSel === i ? " sel" : ""), screenEl);
+      card.style.left = (10 + col * 116) + "px";
+      card.style.top = (56 + row * 68) + "px";
+      card.style.width = "104px"; card.style.height = "56px";
+      card.innerHTML = `<span class="cname" style="margin:0 auto">${item.name}</span>
+        <span class="q" style="margin:0; position:absolute; left:0; right:0; bottom:5px; text-align:center">${item.sub}</span>`;
+      card.onclick = () => { s.hubSel = i; s.page = item.page; render(); };
+    });
+
+  } else if (s.page === PAGE.KEY) {
     pageTitle.textContent = "Chord Book";
-    pageHint.textContent = "UP/DN sel · OK open · hold:tuner";
+    pageHint.textContent = "UP/DN sel · OK open · 2xOK back";
     KEYS.forEach((k, i) => {
       const card = el("keycard" + (s.keySel === i ? " sel" : ""), screenEl);
       card.style.top = (64 + i * 100) + "px";
@@ -503,6 +529,30 @@ function render() {
     TUNER.els.status.textContent = "listening...";
     refreshTunerTarget();
 
+  } else if (s.page === PAGE.CAPO) {
+    pageTitle.textContent = "Capo";
+    pageHint.textContent = "UP/DN set · OK switch · 2xOK back";
+    const rows = [
+      { lab: "Capo fret", val: s.capoFret === 0 ? "none" : String(s.capoFret) },
+      { lab: "Shape key", val: CAPO_SHAPES[s.capoShape].n },
+    ];
+    rows.forEach((r2, i) => {
+      const row = el("row" + (s.capoSel === i ? " sel" : ""), screenEl);
+      row.style.left = "26px"; row.style.top = (56 + i * 52) + "px";
+      row.style.width = "188px"; row.style.height = "44px";
+      row.innerHTML = `<span class="roman" style="width:auto">${r2.lab}</span>
+        <span class="cname" style="margin-left:auto; margin-right:12px; font-size:17px">${r2.val}</span>`;
+    });
+    const pc = (CAPO_SHAPES[s.capoShape].pc + s.capoFret) % 12;
+    const res = el("", screenEl);
+    Object.assign(res.style, { position:"absolute", left:"0", top:"176px", width:"240px",
+      textAlign:"center", color:"#fff", fontSize:"32px", fontWeight:"900", textShadow:"2px 2px 0 var(--ink)" });
+    res.textContent = "= " + KEY_NAMES[pc];
+    const cap = el("", screenEl);
+    Object.assign(cap.style, { position:"absolute", left:"0", top:"222px", width:"240px",
+      textAlign:"center", color:"#cfe6ff", fontSize:"12px", fontWeight:"700" });
+    cap.textContent = "sounding key";
+
   } else {
     const K = KEYS[s.key], D = K.degrees[s.degree];
     const ch = D.v[s.variant[s.key][s.degree]];
@@ -541,11 +591,28 @@ function render() {
 
 function renderInfoPanel() {
   const K = KEYS[s.key];
+  if (s.page === PAGE.HUB) {
+    const item = HUB_ITEMS[s.hubSel];
+    document.getElementById("iChord").textContent = item.name;
+    document.getElementById("iCrumb").innerHTML = "工具箱首页 · <kbd>↑</kbd><kbd>↓</kbd> 选工具，<kbd>Enter</kbd>(OK) 进入";
+    setInfo("3 件工具", "和弦词典 · 调音器 · 变调夹速查", "以后加节拍器就再添一张卡片", "—");
+    return;
+  }
   if (s.page === PAGE.KEY) {
     const K2 = KEYS[s.keySel];
     document.getElementById("iChord").textContent = K2.en + "（" + K2.cn + "）";
     document.getElementById("iCrumb").innerHTML = "调选择页 · <kbd>↑</kbd><kbd>↓</kbd> 选择调，<kbd>Enter</kbd>(OK) 进入";
-    setInfo("调内 7 个级数", "每级 2~3 个变体：三和弦 + 七和弦", "长按 OK 进入调音器", "—");
+    setInfo("调内 7 个级数", "每级 2~3 个变体：三和弦 + 七和弦", "双击 OK 回工具箱", "—");
+    return;
+  }
+  if (s.page === PAGE.CAPO) {
+    const sh = CAPO_SHAPES[s.capoShape];
+    const pc = (sh.pc + s.capoFret) % 12;
+    document.getElementById("iChord").textContent = "= " + KEY_NAMES[pc];
+    document.getElementById("iCrumb").innerHTML =
+      `变调夹速查 · 夹 ${s.capoFret === 0 ? "不夹" : s.capoFret + " 品"}，按 <b>${sh.n}</b> 调指法`;
+    setInfo("实际是 " + KEY_NAMES[pc] + " 调", "换算：(指法调 + 夹品数) mod 12",
+      "UP/DN 改数值，OK 切换行", "—");
     return;
   }
   if (s.page === PAGE.TUNER) {
@@ -624,20 +691,22 @@ setInterval(() => {
 
 /* ============ 按键事件（与固件一致的语义） ============ */
 function onUpDown(dir) { /* dir: -1 UP, +1 DOWN */
-  if (s.page === PAGE.KEY) s.keySel = (s.keySel + dir + 2) % 2;
+  if (s.page === PAGE.HUB) s.hubSel = (s.hubSel + dir + HUB_ITEMS.length) % HUB_ITEMS.length;
+  else if (s.page === PAGE.KEY) s.keySel = (s.keySel + dir + 2) % 2;
   else if (s.page === PAGE.TUNER) {
     s.tunerString = (s.tunerString + dir + 6) % 6;
     render();
     return;
   }
+  else if (s.page === PAGE.CAPO) {
+    if (s.capoSel === 0) s.capoFret = (s.capoFret + dir + 8) % 8;
+    else s.capoShape = (s.capoShape + dir + CAPO_SHAPES.length) % CAPO_SHAPES.length;
+  }
   else s.degree = (s.degree + dir + 7) % 7;
   render();
 }
-function onOkLong() {                 /* 长按: 选调页 <-> 调音器 */
-  if (s.page === PAGE.KEY) s.page = PAGE.TUNER;
-  else if (s.page === PAGE.TUNER) s.page = PAGE.KEY;
-  else return;
-  render();
+function onOkLong() {                 /* 长按: 任何工具页回工具箱 */
+  if (s.page !== PAGE.HUB) { s.page = PAGE.HUB; render(); }
 }
 let okTimer = null;
 function onOkClick() { /* 300ms 内二次点击视为双击（与 BSP 一致） */
@@ -645,9 +714,11 @@ function onOkClick() { /* 300ms 内二次点击视为双击（与 BSP 一致） 
   okTimer = setTimeout(() => { okTimer = null; onOkSingle(); }, 300);
 }
 function onOkSingle() {
-  if (s.page === PAGE.KEY) { s.key = s.keySel; s.degree = 0; s.page = PAGE.LIST; }
+  if (s.page === PAGE.HUB) { s.page = HUB_ITEMS[s.hubSel].page; }
+  else if (s.page === PAGE.KEY) { s.key = s.keySel; s.degree = 0; s.page = PAGE.LIST; }
   else if (s.page === PAGE.LIST) { s.page = PAGE.DETAIL; }
   else if (s.page === PAGE.TUNER) { return; }   /* TUNER 页 OK 无动作 */
+  else if (s.page === PAGE.CAPO) { s.capoSel = 1 - s.capoSel; }
   else { /* 拓展：循环该级数的变体 */
     const n = KEYS[s.key].degrees[s.degree].v.length;
     s.variant[s.key][s.degree] = (s.variant[s.key][s.degree] + 1) % n;
@@ -657,7 +728,9 @@ function onOkSingle() {
 function onOkDouble() {
   if (s.page === PAGE.LIST) s.page = PAGE.KEY;
   else if (s.page === PAGE.DETAIL) s.page = PAGE.LIST;
-  else if (s.page === PAGE.TUNER) s.page = PAGE.KEY;
+  else if (s.page === PAGE.KEY) s.page = PAGE.HUB;
+  else if (s.page === PAGE.TUNER) s.page = PAGE.HUB;
+  else if (s.page === PAGE.CAPO) s.page = PAGE.HUB;
   render();
 }
 

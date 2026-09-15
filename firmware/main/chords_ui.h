@@ -1,4 +1,4 @@
-// main/chords_ui.h —— 吉他和弦词典界面: 三个页面(选调/级数列表/和弦详情)。
+// main/chords_ui.h —— 吉他工具箱界面: 工具箱首页 + 和弦三页 + 调音器 + 变调夹速查。
 // 数据在 chord_model.c; 指法图与按键语义见 chords_ui.c 文件头注释。
 #pragma once
 

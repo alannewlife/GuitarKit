@@ -1,14 +1,14 @@
-// main/chords_ui.c —— 吉他和弦词典界面: 选调(KEY) -> 级数列表(LIST, I..vii°) -> 和弦详情(DETAIL)。
-// 调音器(TUNER)从 KEY 页长按 OK 进入,再长按或双击 OK 返回。
+// main/chords_ui.c —— 吉他工具箱界面: 工具箱(HUB) -> 和弦(选调/级数列表/详情) + 调音器 + 变调夹速查。
 // 按键语义:
-//   上/下 短按   KEY 页=切换调; LIST/DETAIL 页=上一个/下一个级数(循环); TUNER 页=选目标弦
-//   确定  短按   KEY/LIST=进入; DETAIL=同一根音上循环拓展变体(三和弦->七和弦->属七...); TUNER=无
-//   确定  双击   LIST/DETAIL/TUNER=返回上一级
-//   确定  长按   KEY=进调音器; TUNER=返回选调页
-// 和弦数据与指法在 chord_model.c; 新增和弦(如 sus4/add9)只需在对应变体表末尾追加。
-// 调音器数据来自 tuner_audio 采音任务,本文件只做展示(10Hz 轮询)。
+//   上/下 短按   HUB=选工具; KEY=切换调; LIST/DETAIL=上一个/下一个级数(循环); TUNER=选目标弦; CAPO=改数值
+//   确定  短按   HUB/KEY/LIST=进入; DETAIL=同一根音上循环拓展变体; TUNER=无; CAPO=切换"夹几品/按什么调"
+//   确定  双击   逐层返回(KEY/TUNER/CAPO->HUB, DETAIL->LIST->KEY)
+//   确定  长按   任何工具页一步回工具箱
+// 和弦数据在 chord_model.c; 调音算法在 tuner.c; 变调夹换算在 capo_model.c; 采音任务在 tuner_audio.c。
+// 新工具入口: 在 HUB_ITEMS 表加一行, 网格首页自动多一张卡片。
 #include "chords_ui.h"
 #include "chord_model.h"
+#include "capo_model.h"
 #include "tuner.h"
 #include "tuner_audio.h"
 #include "bsp_button.h"
@@ -17,9 +17,28 @@
 
 #include <stdio.h>
 
-typedef enum { PAGE_KEY, PAGE_LIST, PAGE_DETAIL, PAGE_TUNER } page_t;
+typedef enum {
+    PAGE_HUB, PAGE_KEY, PAGE_LIST, PAGE_DETAIL, PAGE_TUNER, PAGE_CAPO
+} page_t;
 
-static page_t s_page = PAGE_KEY;
+// 工具箱入口表: 新工具 = 加一行(名字/副标题/进入哪个页面)。网格两列,
+// 单页最多 6 张卡,超出后再考虑翻页。
+typedef struct {
+    const char *name;
+    const char *sub;
+    page_t page;
+} hub_item_t;
+
+static const hub_item_t HUB_ITEMS[] = {
+    { "Chords", "40 chords",  PAGE_KEY   },
+    { "Tuner",  "mic pitch",  PAGE_TUNER },
+    { "Capo",   "key lookup", PAGE_CAPO  },
+    // 下一件: { "Metronome", "40-240 BPM", PAGE_METRONOME },
+};
+#define HUB_ITEM_COUNT (sizeof(HUB_ITEMS) / sizeof(HUB_ITEMS[0]))
+
+static page_t s_page = PAGE_HUB;
+static int s_hub_sel;            // HUB 页当前选中的工具
 static int s_key_sel;            // KEY 页当前选中的调
 static int s_key;                // 已进入的调
 static int s_degree;             // 当前级数
@@ -35,10 +54,16 @@ static lv_obj_t *s_tun_needle;   // 音分指针
 static lv_obj_t *s_tun_target;   // 目标弦频率行
 static lv_obj_t *s_tun_pills[TUNER_STRING_COUNT];
 
+// 变调夹速查状态: 夹几品(0=不夹) + 用哪个调的指法。
+static int s_capo_sel;           // 0=夹几品, 1=指法调
+static int s_capo_fret;          // 0..CAPO_MAX_FRET
+static int s_capo_shape;         // CAPO_SHAPE_KEYS 下标
+
 static lv_obj_t *s_scr;
 static lv_timer_t *s_tick;
 
-static const char *HINT_KEY    = "UP/DN sel  OK open  hold:tuner";
+static const char *HINT_HUB    = "UP/DN sel  OK open";
+static const char *HINT_KEY    = "UP/DN sel  OK open  2xOK back";
 static const char *HINT_LIST   = "UP/DN move  OK open  2xOK back";
 static const char *HINT_DETAIL = "UP/DN chord  OK 7th  2xOK back";
 static const char *HINT_TUNER  = "UP/DN string  2xOK back";
@@ -250,6 +275,70 @@ static void draw_diagram(lv_obj_t *scr, const chord_variant_t *ch)
     }
 }
 
+// ---- 工具箱首页 ----
+// 两列卡片网格(104x56, 行距 68, 单页 3 行 6 卡)。卡片来自 HUB_ITEMS 表。
+
+static void build_hub_page(lv_obj_t *scr)
+{
+    for (size_t i = 0; i < HUB_ITEM_COUNT; i++) {
+        const int col = (int)(i % 2), row = (int)(i / 2);
+        const int x = 10 + col * 116, y = 56 + row * 68;
+        block(scr, x + 3, y + 4, 104, 56, UI_INK);      // 阴影
+        lv_obj_t *card = plain_panel(scr, x, y, 104, 56);
+        set_selected(card, (int)i == s_hub_sel);
+
+        lv_obj_t *name = label_at(card, HUB_ITEMS[i].name,
+                                  &lv_font_montserrat_14, UI_INK, 0, 8);
+        lv_obj_set_width(name, 104 - 6);
+        lv_obj_set_style_text_align(name, LV_TEXT_ALIGN_CENTER, 0);
+
+        lv_obj_t *sub = label_at(card, HUB_ITEMS[i].sub,
+                                 &lv_font_montserrat_14, 0x5A6B7A, 0, 0);
+        lv_obj_align(sub, LV_ALIGN_BOTTOM_MID, 0, -8);
+    }
+    hint_bar(scr, HINT_HUB);
+}
+
+// ---- 变调夹速查 ----
+// 两行选择(夹几品 / 指法调) + 大字结果。UP/DN 改选中行的值, OK 切换行。
+
+static void build_capo_page(lv_obj_t *scr)
+{
+    char shape_val[8], fret_val[8], result[40];
+    if (s_capo_fret == 0) snprintf(fret_val, sizeof(fret_val), "none");
+    else snprintf(fret_val, sizeof(fret_val), "%d", s_capo_fret);
+    snprintf(shape_val, sizeof(shape_val), "%s",
+             CAPO_SHAPE_KEYS[s_capo_shape].name);
+
+    const char *labels[2] = { "Capo fret", "Shape key" };
+    const char *values[2] = { fret_val, shape_val };
+    for (int i = 0; i < 2; i++) {
+        block(scr, 29, 60 + i * 52, 188, 44, UI_INK);   // 阴影
+        lv_obj_t *row = plain_panel(scr, 26, 56 + i * 52, 188, 44);
+        set_selected(row, s_capo_sel == i);
+        label_at(row, labels[i], &lv_font_montserrat_14, UI_SKY_DARK, 10, 13);
+        lv_obj_t *val = label_at(row, values[i], &lv_font_montserrat_20,
+                                 UI_INK, 0, 8);
+        lv_obj_align(val, LV_ALIGN_RIGHT_MID, -12, 0);
+    }
+
+    // 大字结果: 实际的调。
+    int pc = capo_sounding_pc(CAPO_SHAPE_KEYS[s_capo_shape].pitch_class,
+                              s_capo_fret);
+    snprintf(result, sizeof(result), "= %s", capo_key_name(pc));
+    lv_obj_t *big = label_at(scr, result, &lv_font_montserrat_32,
+                             0xFFFFFF, 0, 182);
+    lv_obj_set_width(big, 240);
+    lv_obj_set_style_text_align(big, LV_TEXT_ALIGN_CENTER, 0);
+
+    lv_obj_t *cap = label_at(scr, "sounding key", &lv_font_montserrat_14,
+                             0xCFE6FF, 0, 226);
+    lv_obj_set_width(cap, 240);
+    lv_obj_set_style_text_align(cap, LV_TEXT_ALIGN_CENTER, 0);
+
+    hint_bar(scr, "UP/DN set  OK switch  2xOK back");
+}
+
 // ---- 页面构建 ----
 
 static void build_key_page(lv_obj_t *scr)
@@ -351,18 +440,22 @@ static void render(void)
     s_tuner_seq = -1;
 
     const char *title;
-    if (s_page == PAGE_KEY)         title = "Chord Book";
+    if (s_page == PAGE_HUB)         title = "Guitar Kit";
+    else if (s_page == PAGE_KEY)    title = "Chord Book";
     else if (s_page == PAGE_LIST)   title = CHORD_KEYS[s_key].name;
     else if (s_page == PAGE_TUNER)  title = "Tuner";
+    else if (s_page == PAGE_CAPO)   title = "Capo";
     else {
         const chord_degree_t *deg = &CHORD_KEYS[s_key].degrees[s_degree];
         title = deg->variants[s_variant[s_key][s_degree]].name;
     }
 
     s_scr = ui_pixel_screen_create(title);
-    if (s_page == PAGE_KEY)         build_key_page(s_scr);
+    if (s_page == PAGE_HUB)         build_hub_page(s_scr);
+    else if (s_page == PAGE_KEY)    build_key_page(s_scr);
     else if (s_page == PAGE_LIST)   build_list_page(s_scr);
     else if (s_page == PAGE_TUNER)  build_tuner_page(s_scr);
+    else if (s_page == PAGE_CAPO)   build_capo_page(s_scr);
     else                            build_detail_page(s_scr);
     lv_screen_load(s_scr);
 }
@@ -371,8 +464,8 @@ static void render(void)
 
 void chords_ui_enter(void)
 {
-    s_page = PAGE_KEY;
-    s_key_sel = 0;
+    s_page = PAGE_HUB;
+    s_hub_sel = 0;
     s_tuner_string = 0;
     render();
     // 调音数据轮询(10Hz)。常驻整个应用生命周期,回调里自行判断当前页面。
@@ -384,13 +477,24 @@ void chords_ui_key(bsp_btn_t btn, bsp_btn_ev_t ev)
     if (btn == BSP_BTN_UP || btn == BSP_BTN_DOWN) {
         if (ev != BSP_BTN_CLICK) return;
         int dir = (btn == BSP_BTN_DOWN) ? 1 : -1;
-        if (s_page == PAGE_KEY) {
+        if (s_page == PAGE_HUB) {
+            int n = (int)HUB_ITEM_COUNT;
+            s_hub_sel = (s_hub_sel + dir + n) % n;
+        } else if (s_page == PAGE_KEY) {
             s_key_sel = (s_key_sel + dir + CHORD_KEY_COUNT) % CHORD_KEY_COUNT;
         } else if (s_page == PAGE_TUNER) {
             s_tuner_string =
                 (s_tuner_string + dir + TUNER_STRING_COUNT) % TUNER_STRING_COUNT;
             tuner_pill_refresh();            // 只刷高亮,不整屏重建
             return;
+        } else if (s_page == PAGE_CAPO) {
+            if (s_capo_sel == 0) {
+                s_capo_fret = (s_capo_fret + dir + CAPO_MAX_FRET + 1)
+                              % (CAPO_MAX_FRET + 1);
+            } else {
+                s_capo_shape = (s_capo_shape + dir + CAPO_SHAPE_KEY_COUNT)
+                               % CAPO_SHAPE_KEY_COUNT;
+            }
         } else {
             s_degree = (s_degree + dir + CHORD_DEGREE_COUNT) % CHORD_DEGREE_COUNT;
         }
@@ -399,22 +503,27 @@ void chords_ui_key(bsp_btn_t btn, bsp_btn_ev_t ev)
     }
     if (btn != BSP_BTN_OK) return;
 
-    if (ev == BSP_BTN_LONG) {                // 长按: 选调页 <-> 调音器
-        if (s_page == PAGE_KEY)      s_page = PAGE_TUNER;
-        else if (s_page == PAGE_TUNER) s_page = PAGE_KEY;
-        render();
+    if (ev == BSP_BTN_LONG) {                // 长按: 任何工具页一步回工具箱
+        if (s_page != PAGE_HUB) { s_page = PAGE_HUB; render(); }
         return;
     }
-    if (ev == BSP_BTN_DOUBLE) {              // 返回上一级
+    if (ev == BSP_BTN_DOUBLE) {              // 逐层返回
         if (s_page == PAGE_LIST)      s_page = PAGE_KEY;
         else if (s_page == PAGE_DETAIL) s_page = PAGE_LIST;
-        else if (s_page == PAGE_TUNER)  s_page = PAGE_KEY;
+        else if (s_page == PAGE_KEY)    s_page = PAGE_HUB;
+        else if (s_page == PAGE_TUNER)  s_page = PAGE_HUB;
+        else if (s_page == PAGE_CAPO)   s_page = PAGE_HUB;
         render();
         return;
     }
     if (ev != BSP_BTN_CLICK) return;
 
-    if (s_page == PAGE_KEY) {                // 进入选中的调
+    if (s_page == PAGE_HUB) {                // 进入选中的工具
+        s_page = HUB_ITEMS[s_hub_sel].page;
+        if (s_page == PAGE_KEY) { s_key = s_key_sel; s_degree = 0; }
+    } else if (s_page == PAGE_CAPO) {        // 切换"夹几品 / 指法调"
+        s_capo_sel = 1 - s_capo_sel;
+    } else if (s_page == PAGE_KEY) {         // 进入选中的调
         s_key = s_key_sel;
         s_degree = 0;
         s_page = PAGE_LIST;

@@ -95,7 +95,7 @@
     position: absolute; right: 10px; top: 44px; color: #fff;
     font-size: 30px; font-weight: 900; text-shadow: 2px 2px 0 var(--ink);
   }
-  .diagram { position: absolute; left: 18px; top: 96px; }
+  .diagram { position: absolute; left: 18px; top: 112px; }
   .side-info { position: absolute; left: 138px; top: 102px; width: 92px; }
   .side-info .qn { color: #fff; font-size: 15px; font-weight: 900; text-shadow: 1px 1px 0 var(--ink); }
   .side-info .qq { color: #ffe9a8; font-size: 11px; font-weight: 800; margin-top: 3px; }
@@ -610,10 +610,6 @@ function render() {
     dia.appendChild(cv);
     drawChordDiagram(cv, ch, 1);
 
-    const leg = el("", screenEl);
-    Object.assign(leg.style, { position:"absolute", left:"18px", top:"238px",
-      color:"#FFB23E", fontSize:"9px", fontWeight:"700" });
-    leg.textContent = "橙色弦 = 根音所在弦";
     const si = el("side-info", screenEl);
     si.innerHTML = `<div class="qn">${ch.q}</div><div class="qq">${ch.qcn}</div>
       <div class="nt">${ch.notes}</div>

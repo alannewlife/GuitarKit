@@ -268,7 +268,7 @@ static void tuner_tick(lv_timer_t *t)
 
 static void draw_diagram(lv_obj_t *scr, const chord_variant_t *ch)
 {
-    const int x0 = 20, y0 = 110;   // 螺母(上弦枕)左端
+    const int x0 = 20, y0 = 126;   // 螺母(上弦枕)左端
     const int sp = 16, fh = 26;    // 弦间距 / 品距
     const int width = (CHORD_STRINGS - 1) * sp;
 
@@ -446,9 +446,6 @@ static void build_detail_page(lv_obj_t *scr)
     lv_obj_set_style_text_color(name, lv_color_hex(0xFFFFFF), 0);
 
     draw_diagram(scr, ch);
-    // 图例: 橙色弦即根音所在弦(根音点为红色)。
-    (void)label_at(scr, "orange = root string",
-                   &lv_font_montserrat_12, UI_ORANGE, 14, 238);   // LVGL 持有,无需句柄
 
     label_at(scr, ch->quality, &lv_font_montserrat_20, UI_YELLOW, 128, 88);
     label_at(scr, ch->notes, &lv_font_montserrat_14, 0xEAF4FF, 128, 118);

@@ -50,7 +50,7 @@ static int s_degree;             // 当前级数
 // 会话内记住每级选中的变体, 回到列表时能看到已拓展的和弦名。
 static int s_variant[CHORD_KEY_COUNT][CHORD_DEGREE_COUNT];
 
-// 调音页状态: 目标弦 + 自动跟弦(弹哪根亮哪根)。
+// 调音页状态: 选定的弦即锁定目标, 偏差始终相对它计算, 不自动跳弦。
 static int s_tuner_string;
 static int s_tuner_seq = -1;     // 上次处理的帧序号
 static lv_obj_t *s_tun_freq;     // 大字检测频率
@@ -243,7 +243,7 @@ static void tuner_tick(lv_timer_t *t)
     if (r.seq == s_tuner_seq) return;                   // 没有新帧
     s_tuner_seq = r.seq;
 
-    if (r.freq_x100 <= 0 || r.nearest < 0) {
+    if (r.freq_x100 <= 0) {
         lv_label_set_text(s_tun_freq, "-- Hz");
         lv_obj_set_x(s_tun_needle, 117);
         lv_label_set_text(s_tun_status, "play a string...");
@@ -252,18 +252,16 @@ static void tuner_tick(lv_timer_t *t)
         return;
     }
 
-    // 自动跟弦: 弹哪根亮哪根(六弦通用调音器的常见行为)。
-    if (r.nearest != s_tuner_string) {
-        s_tuner_string = r.nearest;
-        tuner_pill_refresh();
-    }
+    // 定弦: 偏差始终相对当前选中的弦, 不随检测到的音高跳到别的弦。
+    int c = tuner_cents(TUNER_STRINGS[s_tuner_string].freq_x100, r.freq_x100);
 
     lv_label_set_text_fmt(s_tun_freq, "%d.%02d Hz",
                           r.freq_x100 / 100, r.freq_x100 % 100);
 
-    int c = r.cents;
-    if (c < -50) c = -50;
-    if (c > 50) c = 50;
+    int pin = c;
+    if (pin < -50) pin = -50;
+    if (pin > 50) pin = 50;
+    lv_obj_set_x(s_tun_needle, 120 + pin * 2 - 3);
     lv_obj_set_x(s_tun_needle, 120 + c * 2 - 3);
 
     if (c > -6 && c < 6) {

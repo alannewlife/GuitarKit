@@ -724,12 +724,12 @@ function refreshTunerTarget() {
 setInterval(() => {
   if (s.page !== PAGE.TUNER) { TUNER.sim.active = false; return; }
   const sim = TUNER.sim;
-  if (!sim.active) { sim.active = true; sim.cents = (Math.random() * 80 - 40) | 0; }
-  if (Math.random() < 0.22) s.tunerString = (Math.random() * 6) | 0;
+  if (!sim.active) { sim.active = true; sim.cents = 0; }
+  // 选弦锁定: 偏差始终相对选中的弦; 偶尔模拟弹出偏差很大的音(指针钉边)
   sim.cents += (Math.random() - 0.5) * 16;
-  if (Math.random() < 0.12) sim.cents = (Math.random() * 10 - 5) | 0;   // 偶尔接近合弦
-  if (sim.cents < -48) sim.cents = -48;
-  if (sim.cents > 48) sim.cents = 48;
+  if (Math.random() < 0.06) sim.cents = (Math.random() < 0.5 ? -1 : 1) * (120 + Math.random() * 480);
+  if (sim.cents < -600) sim.cents = -600;
+  if (sim.cents > 600) sim.cents = 600;
 
   refreshTunerTarget();
   TUNER.els.pills.forEach((p, i) =>
@@ -738,7 +738,8 @@ setInterval(() => {
   const st = TUNER.STRINGS[s.tunerString];
   const hz = st.hz * Math.pow(2, sim.cents / 1200);
   TUNER.els.freq.textContent = hz.toFixed(1) + " Hz";
-  TUNER.els.needle.style.left = (120 + sim.cents * 2 - 3) + "px";
+  const pin = Math.max(-50, Math.min(50, sim.cents));
+  TUNER.els.needle.style.left = (120 + pin * 2 - 3) + "px";
   if (sim.cents > -6 && sim.cents < 6) {
     TUNER.els.status.textContent = "IN TUNE";
     TUNER.els.status.style.color = "#8FE84C";
